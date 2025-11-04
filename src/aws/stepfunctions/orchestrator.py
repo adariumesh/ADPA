@@ -45,14 +45,14 @@ class StepFunctionsOrchestrator:
     
     def create_adpa_workflow(self, 
                            workflow_name: str,
-                           lambda_function_arn: str,
+                           glue_job_prefix: str,
                            s3_bucket: str) -> ExecutionResult:
         """
         Create ADPA data processing workflow in Step Functions.
         
         Args:
             workflow_name: Name for the Step Functions state machine
-            lambda_function_arn: ARN of the Lambda function for processing
+            glue_job_prefix: Prefix for Glue job names
             s3_bucket: S3 bucket for data storage
             
         Returns:
@@ -62,7 +62,7 @@ class StepFunctionsOrchestrator:
             self.logger.info(f"Creating ADPA workflow: {workflow_name}")
             
             # Define the state machine definition
-            definition = self._create_workflow_definition(lambda_function_arn, s3_bucket)
+            definition = self._create_workflow_definition(glue_job_prefix, s3_bucket)
             
             # Create IAM role for Step Functions (simplified - in production use proper roles)
             role_arn = self._get_or_create_execution_role()
@@ -224,29 +224,31 @@ class StepFunctionsOrchestrator:
             self.logger.error(f"Unexpected error monitoring execution: {str(e)}")
             return {'error': str(e)}
     
-    def _create_workflow_definition(self, lambda_function_arn: str, s3_bucket: str) -> Dict[str, Any]:
-        """Create the Step Functions workflow definition for ADPA."""
+    def _create_workflow_definition(self, glue_job_prefix: str, s3_bucket: str) -> Dict[str, Any]:
+        """Create the Step Functions workflow definition for ADPA using Glue Jobs."""
         
         definition = {
-            "Comment": "ADPA Data Processing Workflow",
+            "Comment": "ADPA Data Processing Workflow with AWS Glue",
             "StartAt": "ProfileData",
             "States": {
                 "ProfileData": {
                     "Type": "Task",
-                    "Resource": lambda_function_arn,
+                    "Resource": "arn:aws:states:::glue:startJobRun.sync",
                     "Parameters": {
-                        "bucket": s3_bucket,
-                        "input_key.$": "$.input_key",
-                        "output_key.$": "States.Format('{}/profiled.json', $.output_prefix)",
-                        "processing_config": {
-                            "operation": "profile"
+                        "JobName": f"{glue_job_prefix}-data-profiling",
+                        "Arguments": {
+                            "--input_path.$": "States.Format('s3://{}/{}', $.s3_bucket, $.input_key)",
+                            "--output_path.$": "States.Format('s3://{}/{}/profiling_results', $.s3_bucket, $.output_prefix)",
+                            "--database_name": "adpa_catalog",
+                            "--table_name.$": "States.Format('raw_data_{}', $.execution_id)"
                         }
                     },
+                    "ResultPath": "$.profiling_result",
                     "Next": "CheckDataQuality",
                     "Retry": [
                         {
                             "ErrorEquals": ["States.TaskFailed"],
-                            "IntervalSeconds": 2,
+                            "IntervalSeconds": 30,
                             "MaxAttempts": 3,
                             "BackoffRate": 2.0
                         }
@@ -254,7 +256,8 @@ class StepFunctionsOrchestrator:
                     "Catch": [
                         {
                             "ErrorEquals": ["States.ALL"],
-                            "Next": "HandleError"
+                            "Next": "HandleError",
+                            "ResultPath": "$.error_info"
                         }
                     ]
                 },
@@ -262,84 +265,119 @@ class StepFunctionsOrchestrator:
                     "Type": "Choice",
                     "Choices": [
                         {
-                            "Variable": "$.processing_results.data_quality.completeness_score",
-                            "NumericGreaterThan": 0.7,
-                            "Next": "CleanData"
+                            "Variable": "$.profiling_result.JobRunState",
+                            "StringEquals": "SUCCEEDED",
+                            "Next": "ParseProfilingResults"
                         }
                     ],
-                    "Default": "DataQualityIssue"
+                    "Default": "ProfilingFailed"
+                },
+                "ParseProfilingResults": {
+                    "Type": "Pass",
+                    "Parameters": {
+                        "profiling_status": "completed",
+                        "proceed_to_cleaning": true
+                    },
+                    "ResultPath": "$.quality_check",
+                    "Next": "CleanData"
                 },
                 "CleanData": {
                     "Type": "Task",
-                    "Resource": lambda_function_arn,
+                    "Resource": "arn:aws:states:::glue:startJobRun.sync",
                     "Parameters": {
-                        "bucket": s3_bucket,
-                        "input_key.$": "$.input_key",
-                        "output_key.$": "States.Format('{}/cleaned.csv', $.output_prefix)",
-                        "processing_config": {
-                            "operation": "clean",
-                            "parameters": {
-                                "missing_strategy": "fill_median",
-                                "handle_outliers": True
-                            }
+                        "JobName": f"{glue_job_prefix}-data-cleaning",
+                        "Arguments": {
+                            "--input_path.$": "States.Format('s3://{}/{}', $.s3_bucket, $.input_key)",
+                            "--output_path.$": "States.Format('s3://{}/{}/cleaned_data', $.s3_bucket, $.output_prefix)",
+                            "--cleaning_config": "{\"remove_duplicates\": true, \"missing_value_strategy\": \"median\", \"outlier_treatment\": \"cap\", \"data_type_conversion\": true}"
                         }
                     },
+                    "ResultPath": "$.cleaning_result",
                     "Next": "TransformData",
                     "Retry": [
                         {
                             "ErrorEquals": ["States.TaskFailed"],
-                            "IntervalSeconds": 2,
+                            "IntervalSeconds": 30,
                             "MaxAttempts": 3,
                             "BackoffRate": 2.0
+                        }
+                    ],
+                    "Catch": [
+                        {
+                            "ErrorEquals": ["States.ALL"],
+                            "Next": "HandleError",
+                            "ResultPath": "$.error_info"
                         }
                     ]
                 },
                 "TransformData": {
                     "Type": "Task",
-                    "Resource": lambda_function_arn,
+                    "Resource": "arn:aws:states:::glue:startJobRun.sync",
                     "Parameters": {
-                        "bucket": s3_bucket,
-                        "input_key.$": "States.Format('{}/cleaned.csv', $.output_prefix)",
-                        "output_key.$": "States.Format('{}/transformed.csv', $.output_prefix)",
-                        "processing_config": {
-                            "operation": "transform",
-                            "parameters": {
-                                "encode_categorical": True,
-                                "normalize_numeric": True
-                            }
+                        "JobName": f"{glue_job_prefix}-feature-engineering",
+                        "Arguments": {
+                            "--input_path.$": "States.Format('s3://{}/{}/cleaned_data/data', $.s3_bucket, $.output_prefix)",
+                            "--output_path.$": "States.Format('s3://{}/{}/transformed_data', $.s3_bucket, $.output_prefix)",
+                            "--transformation_config": "{\"encode_categorical\": true, \"normalize_numeric\": true, \"feature_selection\": true}"
                         }
                     },
-                    "Next": "ProcessingComplete",
+                    "ResultPath": "$.transformation_result",
+                    "Next": "PrepareForML",
                     "Retry": [
                         {
                             "ErrorEquals": ["States.TaskFailed"],
-                            "IntervalSeconds": 2,
+                            "IntervalSeconds": 30,
                             "MaxAttempts": 3,
                             "BackoffRate": 2.0
                         }
+                    ],
+                    "Catch": [
+                        {
+                            "ErrorEquals": ["States.ALL"],
+                            "Next": "HandleError",
+                            "ResultPath": "$.error_info"
+                        }
                     ]
+                },
+                "PrepareForML": {
+                    "Type": "Pass",
+                    "Parameters": {
+                        "ml_ready": true,
+                        "data_location.$": "States.Format('s3://{}/{}/transformed_data/data', $.s3_bucket, $.output_prefix)",
+                        "next_step": "sagemaker_training"
+                    },
+                    "ResultPath": "$.ml_preparation",
+                    "Next": "ProcessingComplete"
                 },
                 "ProcessingComplete": {
                     "Type": "Pass",
-                    "Result": {
+                    "Parameters": {
                         "status": "SUCCESS",
-                        "message": "Data processing pipeline completed successfully"
+                        "message": "ADPA data processing pipeline completed successfully",
+                        "pipeline_summary": {
+                            "profiling_job.$": "$.profiling_result.JobRunId",
+                            "cleaning_job.$": "$.cleaning_result.JobRunId", 
+                            "transformation_job.$": "$.transformation_result.JobRunId",
+                            "ml_ready_data.$": "$.ml_preparation.data_location"
+                        }
                     },
                     "End": True
                 },
-                "DataQualityIssue": {
+                "ProfilingFailed": {
                     "Type": "Pass",
-                    "Result": {
-                        "status": "WARNING",
-                        "message": "Data quality issues detected. Manual review recommended."
+                    "Parameters": {
+                        "status": "ERROR",
+                        "message": "Data profiling job failed",
+                        "failed_job.$": "$.profiling_result"
                     },
                     "End": True
                 },
                 "HandleError": {
                     "Type": "Pass",
-                    "Result": {
+                    "Parameters": {
                         "status": "ERROR",
-                        "message": "Pipeline execution failed. Check logs for details."
+                        "message": "Pipeline execution failed. Check Glue job logs for details.",
+                        "error_details.$": "$.error_info"
                     },
                     "End": True
                 }
