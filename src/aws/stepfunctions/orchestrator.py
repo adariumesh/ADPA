@@ -347,6 +347,85 @@ class StepFunctionsOrchestrator:
                         "next_step": "sagemaker_training"
                     },
                     "ResultPath": "$.ml_preparation",
+                    "Next": "TrainModel"
+                },
+                "TrainModel": {
+                    "Type": "Task",
+                    "Resource": "arn:aws:states:::sagemaker:createAutoMLJob.sync",
+                    "Parameters": {
+                        "AutoMLJobName.$": "States.Format('adpa-automl-{}', $.execution_id)",
+                        "InputDataConfig": [
+                            {
+                                "ChannelName": "training",
+                                "DataSource": {
+                                    "S3DataSource": {
+                                        "S3DataType": "S3Prefix",
+                                        "S3Uri.$": "$.ml_preparation.data_location",
+                                        "S3DataDistributionType": "FullyReplicated"
+                                    }
+                                },
+                                "ContentType": "text/csv",
+                                "CompressionType": "None"
+                            }
+                        ],
+                        "OutputDataConfig": {
+                            "S3OutputPath.$": "States.Format('s3://{}/{}/models', $.s3_bucket, $.output_prefix)"
+                        },
+                        "ProblemType": "BinaryClassification",
+                        "AutoMLJobObjective": {
+                            "MetricName": "F1"
+                        },
+                        "RoleArn": "arn:aws:iam::123456789012:role/ADPASageMakerRole",
+                        "AutoMLJobConfig": {
+                            "CompletionCriteria": {
+                                "MaxCandidates": 5,
+                                "MaxRuntimePerTrainingJobInSeconds": 3600,
+                                "MaxAutoMLJobRuntimeInSeconds": 7200
+                            }
+                        }
+                    },
+                    "ResultPath": "$.training_result",
+                    "Next": "EvaluateModel",
+                    "Retry": [
+                        {
+                            "ErrorEquals": ["States.TaskFailed"],
+                            "IntervalSeconds": 60,
+                            "MaxAttempts": 2,
+                            "BackoffRate": 2.0
+                        }
+                    ],
+                    "Catch": [
+                        {
+                            "ErrorEquals": ["States.ALL"],
+                            "Next": "TrainingFailed",
+                            "ResultPath": "$.error_info"
+                        }
+                    ]
+                },
+                "EvaluateModel": {
+                    "Type": "Pass",
+                    "Parameters": {
+                        "evaluation_complete": true,
+                        "model_performance.$": "$.training_result.BestCandidate.FinalAutoMLJobObjectiveMetric.Value",
+                        "model_ready": true
+                    },
+                    "ResultPath": "$.evaluation_result",
+                    "Next": "GenerateReport"
+                },
+                "GenerateReport": {
+                    "Type": "Pass",
+                    "Parameters": {
+                        "report_generated": true,
+                        "pipeline_summary": {
+                            "status": "SUCCESS",
+                            "profiling_completed": true,
+                            "cleaning_completed": true,
+                            "feature_engineering_completed": true,
+                            "training_completed": true,
+                            "evaluation_completed": true
+                        }
+                    },
+                    "ResultPath": "$.report_result",
                     "Next": "ProcessingComplete"
                 },
                 "ProcessingComplete": {
@@ -369,6 +448,16 @@ class StepFunctionsOrchestrator:
                         "status": "ERROR",
                         "message": "Data profiling job failed",
                         "failed_job.$": "$.profiling_result"
+                    },
+                    "End": True
+                },
+                "TrainingFailed": {
+                    "Type": "Pass",
+                    "Parameters": {
+                        "status": "ERROR",
+                        "message": "SageMaker AutoML training job failed",
+                        "failed_job.$": "$.training_result",
+                        "error_details.$": "$.error_info"
                     },
                     "End": True
                 },
