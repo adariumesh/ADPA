@@ -1,111 +1,93 @@
-# Autonomous Data Pipeline Agent (ADPA)
+# Welcome to your CDK TypeScript project
 
-An AI agent that automatically plans, builds, executes, monitors, and reports end-to-end ML pipelines with minimal human intervention.
+This is a blank project for CDK development with TypeScript.
 
-## Team Members
-- **Archit Golatkar** - Agent Planning & Orchestration + Core Logic
-- **Umesh Adari** - Data/ETL, Feature Engineering, Model Training & Evaluation  
-- **Girik Tripathi** - Monitoring, Security, API/UI, & Comparative Baseline
+The `cdk.json` file tells the CDK Toolkit how to execute your app.
 
-## Project Overview
+## Useful commands
 
-ADPA tackles the challenge of manual, brittle data pipeline creation by providing an autonomous agent that:
+* `npm run build`   compile typescript to js
+* `npm run watch`   watch for changes and compile
+* `npm run test`    perform the jest unit tests
+* `npx cdk deploy`  deploy this stack to your default AWS account/region
+* `npx cdk diff`    compare deployed stack with current state
+* `npx cdk synth`   emits the synthesized CloudFormation template
 
-- **Automatically plans** pipeline steps based on dataset characteristics and objectives
-- **Dynamically adapts** when steps fail with intelligent fallback strategies
-- **Learns from experience** to optimize future pipeline executions
-- **Provides comprehensive observability** with monitoring and reporting
-- **Compares cloud vs local** implementations for concrete benefits analysis
 
-## Current Progress
+# 0) Configure AWS credentials (choose ONE)
+# Using default profile
+aws configure
+# OR using a named profile
+aws configure --profile adpa
 
-### ✅ Completed (Phase 1)
-- [x] Project structure and development environment
-- [x] Core agent framework with reasoning capabilities
-- [x] Pipeline planner with intelligent step selection
-- [x] Step executor with retry logic and error handling
-- [x] Memory manager for learning from past executions
-- [x] Basic pipeline components (ingestion, cleaning)
-- [x] Configuration management system
+Outputs to note (after deploy):
 
-### 🚧 In Progress
-- [ ] Feature engineering pipeline step
-- [ ] ML training and evaluation steps
-- [ ] AWS service integrations
-- [ ] Monitoring and observability framework
+RawBucketName, CuratedBucketName, ArtifactsBucketName
 
-### 📋 Planned
-- [ ] Local baseline implementation
-- [ ] API and user interface
-- [ ] Security and authentication
-- [ ] Comprehensive testing suite
-- [ ] Documentation and deployment
+GlueDatabaseName, GlueCrawlerName
 
-## Architecture
-
-```
-ADPA Agent
-├── Agent Core (Planning & Reasoning)
-├── Pipeline Steps (Ingestion → Cleaning → Feature Engineering → Training → Evaluation)
-├── AWS Integration (S3, Lambda, Glue, SageMaker, Step Functions)
-├── Monitoring (CloudWatch, X-Ray, Custom Metrics)
-└── Memory System (Learning from past executions)
-```
-
-## Quick Start
 
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd adpa
+# 1) Create and enter a workspace
+mkdir adpa-day1-2 && cd adpa-day1-2
 
-# Set up virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# 2) Initialize CDK TypeScript app
+npx cdk init app --language typescript
 
-# Install dependencies
-pip install -r requirements.txt
+# 3) Replace the generated files with the code in this document (see file sections below)
+#    - package.json, cdk.json, bin/adpa-app.ts, lib/adpa-data-stack.ts
 
-# Run basic example (coming soon)
-python -m src.agent.core.agent
-```
+# 4) Install deps
+npm install
 
-## Configuration
+# 5) Bootstrap (first time per account/region)
+# If you use a named profile, add: --profile adpa
+cdk bootstrap
 
-Copy `.env.example` to `.env` and configure your settings:
+# 6) Deploy the data stack (add --profile if you used one)
+cdk deploy
 
-```bash
-cp .env.example .env
-# Edit .env with your AWS credentials and other settings
-```
+# 7) Create & upload sample datasets
+python3 scripts/generate_and_upload.py --bucket <RAW_BUCKET_NAME_OUTPUT_FROM_CDK>
 
-## Development
+# 8) (Optional) Start Glue crawler so Athena sees tables
+aws glue start-crawler --name <CrawlerNameFromOutputs>
 
-```bash
-# Install development dependencies
-pip install -r requirements.txt
+# 1) Create and enter a workspace
+mkdir adpa-day1-2 && cd adpa-day1-2
 
-# Run tests (coming soon)
-pytest
+# 2) Initialize CDK TypeScript app
+npx cdk init app --language typescript
 
-# Code formatting
-black src/
-flake8 src/
-```
+# 3) Replace the generated files with the code in this document (see file sections below)
+#    - package.json, cdk.json, bin/adpa-app.ts, lib/adpa-data-stack.ts
 
-## Contributing
+# 4) Install deps
+npm install
 
-1. Create feature branch from main
-2. Make changes following code style guidelines
-3. Add tests for new functionality
-4. Submit pull request for review
+# 5) Bootstrap (first time per account/region)
+cdk bootstrap
 
-## License
+# 6) Deploy the data stack
+cdk deploy
 
-MIT License - see LICENSE file for details
+# 7) Create & upload sample datasets
+python3 scripts/generate_and_upload.py --bucket <RAW_BUCKET_NAME_OUTPUT_FROM_CDK>
 
----
+# 8) (Optional) Start Glue crawler so Athena sees tables
+aws glue start-crawler --name <CrawlerNameFromOutputs>
 
-**Course:** DATA650 - Big Data Analytics  
-**Institution:** University of Maryland  
-**Semester:** Fall 2025
+
+
+ ✅  AdpaDataStack
+
+✨  Deployment time: 117.65s
+
+Outputs:
+AdpaDataStack.ArtifactsBucketName = adpadatastack-artifactsbucket2aac5544-usu6mmtjs1tf
+AdpaDataStack.CuratedBucketName = adpadatastack-curatedbucket6a59c97e-csypjbbtlgtd
+AdpaDataStack.GlueCrawlerName = adpa-raw-crawler
+AdpaDataStack.GlueDatabaseName = adpa_raw_db
+AdpaDataStack.RawBucketName = adpadatastack-rawbucket0c3ee094-46betroebefa
+Stack ARN:
+arn:aws:cloudformation:us-east-1:337909748531:stack/AdpaDataStack/0efaa9a0-bc1c-11f0-9025-0eda7caa0761
