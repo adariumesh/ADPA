@@ -26,6 +26,7 @@ class PipelineStepType(Enum):
     TRAINING = "training"
     EVALUATION = "evaluation"
     REPORTING = "reporting"
+    MONITORING = "monitoring"
 
 
 @dataclass
