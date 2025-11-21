@@ -1,0 +1,299 @@
+{
+  "name": "adpa-project-manager",
+  "version": "1.0.0",
+  "description": "MCP server for managing ADPA project completion with context, credentials, and guidance",
+  "server": {
+    "command": "python",
+    "args": ["-m", "mcp_server.server"],
+    "env": {
+      "PYTHONPATH": "${workspaceFolder}"
+    }
+  },
+  "capabilities": {
+    "tools": [
+      {
+        "name": "get_project_status",
+        "description": "Get current implementation status of ADPA project",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "component": {
+              "type": "string",
+              "description": "Specific component to check (optional)",
+              "enum": [
+                "all",
+                "core_agent",
+                "pipeline",
+                "aws_integration",
+                "memory_system",
+                "monitoring",
+                "api",
+                "testing"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "name": "get_aws_credentials",
+        "description": "Get AWS credentials for development (securely stored)",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "service": {
+              "type": "string",
+              "description": "AWS service needing credentials",
+              "enum": ["s3", "sagemaker", "glue", "lambda", "stepfunctions", "all"]
+            }
+          },
+          "required": ["service"]
+        }
+      },
+      {
+        "name": "get_next_task",
+        "description": "Get the next recommended task based on dependencies and priority",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "current_context": {
+              "type": "string",
+              "description": "What you're currently working on"
+            }
+          }
+        }
+      },
+      {
+        "name": "update_task_status",
+        "description": "Update the status of a task",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "task_id": {
+              "type": "string",
+              "description": "Task identifier"
+            },
+            "status": {
+              "type": "string",
+              "enum": ["not_started", "in_progress", "completed", "blocked"],
+              "description": "New task status"
+            },
+            "notes": {
+              "type": "string",
+              "description": "Optional notes about the update"
+            }
+          },
+          "required": ["task_id", "status"]
+        }
+      },
+      {
+        "name": "get_implementation_guidance",
+        "description": "Get detailed implementation guidance for a specific feature",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "feature": {
+              "type": "string",
+              "description": "Feature to implement",
+              "enum": [
+                "feature_engineering",
+                "model_evaluation",
+                "reporting",
+                "memory_system",
+                "monitoring",
+                "local_baseline",
+                "api",
+                "testing"
+              ]
+            }
+          },
+          "required": ["feature"]
+        }
+      },
+      {
+        "name": "get_code_patterns",
+        "description": "Get code patterns and conventions used in the project",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "pattern_type": {
+              "type": "string",
+              "description": "Type of pattern to retrieve",
+              "enum": [
+                "pipeline_step",
+                "aws_client",
+                "error_handling",
+                "testing",
+                "interfaces"
+              ]
+            }
+          },
+          "required": ["pattern_type"]
+        }
+      },
+      {
+        "name": "validate_implementation",
+        "description": "Validate that an implementation follows project standards",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "file_path": {
+              "type": "string",
+              "description": "Path to file to validate"
+            },
+            "check_types": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["structure", "naming", "error_handling", "documentation", "testing"]
+              },
+              "description": "Types of checks to perform"
+            }
+          },
+          "required": ["file_path"]
+        }
+      },
+      {
+        "name": "get_test_data",
+        "description": "Get sample test data for development",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "data_type": {
+              "type": "string",
+              "description": "Type of test data needed",
+              "enum": ["small_dataset", "large_dataset", "classification", "regression", "with_missing_values"]
+            }
+          },
+          "required": ["data_type"]
+        }
+      },
+      {
+        "name": "get_configuration_template",
+        "description": "Get configuration templates for AWS resources",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "resource_type": {
+              "type": "string",
+              "description": "Type of AWS resource",
+              "enum": ["s3_bucket", "iam_role", "sagemaker_job", "glue_job", "step_function"]
+            }
+          },
+          "required": ["resource_type"]
+        }
+      },
+      {
+        "name": "estimate_costs",
+        "description": "Estimate AWS costs for a given configuration",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "dataset_size_gb": {
+              "type": "number",
+              "description": "Size of dataset in GB"
+            },
+            "training_hours": {
+              "type": "number",
+              "description": "Expected training time in hours"
+            },
+            "instance_type": {
+              "type": "string",
+              "description": "SageMaker instance type"
+            }
+          },
+          "required": ["dataset_size_gb"]
+        }
+      }
+    ],
+    "resources": [
+      {
+        "uri": "adpa://project/memory",
+        "name": "Project Memory",
+        "description": "Complete project context and implementation status",
+        "mimeType": "text/markdown"
+      },
+      {
+        "uri": "adpa://project/implementation-plan",
+        "name": "Implementation Plan",
+        "description": "Detailed implementation plan for remaining features",
+        "mimeType": "text/markdown"
+      },
+      {
+        "uri": "adpa://project/architecture",
+        "name": "Architecture Documentation",
+        "description": "System architecture and design patterns",
+        "mimeType": "text/markdown"
+      },
+      {
+        "uri": "adpa://aws/credentials",
+        "name": "AWS Credentials",
+        "description": "Encrypted AWS credentials for development",
+        "mimeType": "application/json"
+      },
+      {
+        "uri": "adpa://code/examples",
+        "name": "Code Examples",
+        "description": "Code examples and templates",
+        "mimeType": "text/plain"
+      }
+    ],
+    "prompts": [
+      {
+        "name": "implement_feature",
+        "description": "Guide implementation of a specific feature",
+        "arguments": [
+          {
+            "name": "feature_name",
+            "description": "Name of the feature to implement",
+            "required": true
+          }
+        ]
+      },
+      {
+        "name": "review_code",
+        "description": "Review code for compliance with project standards",
+        "arguments": [
+          {
+            "name": "file_path",
+            "description": "Path to file to review",
+            "required": true
+          }
+        ]
+      },
+      {
+        "name": "debug_issue",
+        "description": "Help debug an implementation issue",
+        "arguments": [
+          {
+            "name": "issue_description",
+            "description": "Description of the issue",
+            "required": true
+          }
+        ]
+      },
+      {
+        "name": "plan_testing",
+        "description": "Create a testing plan for a component",
+        "arguments": [
+          {
+            "name": "component_name",
+            "description": "Component to test",
+            "required": true
+          }
+        ]
+      }
+    ]
+  },
+  "security": {
+    "credential_storage": "encrypted",
+    "encryption_method": "AES-256-GCM",
+    "key_derivation": "PBKDF2",
+    "requires_authentication": true
+  },
+  "settings": {
+    "auto_save_progress": true,
+    "save_interval_minutes": 5,
+    "track_time_spent": true,
+    "suggest_next_task": true
+  }
+}
