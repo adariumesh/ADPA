@@ -1,0 +1,138 @@
+{
+  "report_period": "7 days",
+  "generated_at": "2025-11-07T22:56:28.938687",
+  "executive_summary": {
+    "pipeline_success_rate": "95.0%",
+    "average_model_accuracy": "0.8%",
+    "cost_per_execution": "$2.99",
+    "uptime_percentage": "100.0%"
+  },
+  "detailed_metrics": {
+    "pipeline_success_rate": {
+      "current_value": 94.9685534591195,
+      "average_value": 94.57841869870171,
+      "min_value": 84.90566037735849,
+      "max_value": 105.5944055944056,
+      "trend": "declining",
+      "trend_magnitude": 1.5792250327290747
+    },
+    "pipeline_failure_rate": {
+      "current_value": 5.031446540880504,
+      "average_value": 5.421581301298282,
+      "min_value": -5.594405594405594,
+      "max_value": 15.09433962264151,
+      "trend": "improving",
+      "trend_magnitude": 1.5792250327290753
+    },
+    "average_processing_time_minutes": {
+      "current_value": 3.9166666666666665,
+      "average_value": 4.237500000000001,
+      "min_value": 3.5,
+      "max_value": 4.933333333333334,
+      "trend": "declining",
+      "trend_magnitude": 0.06071428571428544
+    },
+    "average_data_quality": {
+      "current_value": 95.3838976873609,
+      "average_value": 95.27563501452461,
+      "min_value": 94.35986817539079,
+      "max_value": 96.63515132918758,
+      "trend": "declining",
+      "trend_magnitude": 0.11672137083981733
+    },
+    "data_quality_trend": {
+      "current_value": -0.3667387882546117,
+      "average_value": 0.17023636557819471,
+      "min_value": -1.038198545902504,
+      "max_value": 2.0295441807675716,
+      "trend": "improving",
+      "trend_magnitude": 0.0008656673270933899
+    },
+    "average_model_accuracy": {
+      "current_value": 0.8371916014288947,
+      "average_value": 0.8564780644564611,
+      "min_value": 0.8371916014288947,
+      "max_value": 0.877,
+      "trend": "declining",
+      "trend_magnitude": 0.001371661008797058
+    },
+    "model_accuracy_std": {
+      "current_value": 0.025687974553835254,
+      "average_value": 0.023628256924680437,
+      "min_value": 0.005656854249492385,
+      "max_value": 0.03541090412909585,
+      "trend": "improving",
+      "trend_magnitude": 0.0010421437067292152
+    },
+    "model_performance_trend": {
+      "current_value": -0.00015464424325638466,
+      "average_value": 0.002217309391221195,
+      "min_value": -0.007930135993609859,
+      "max_value": 0.02117091825823832,
+      "trend": "declining",
+      "trend_magnitude": 0.0024649784587725304
+    },
+    "cost_per_execution": {
+      "current_value": 2.9927212093038524,
+      "average_value": 3.002402579276576,
+      "min_value": 2.6672632229586215,
+      "max_value": 3.2338427180120886,
+      "trend": "declining",
+      "trend_magnitude": 0.044601463347790415
+    },
+    "cost_per_gb_processed": {
+      "current_value": 0.20842867817753505,
+      "average_value": 0.1981942788723278,
+      "min_value": 0.16152179388122456,
+      "max_value": 0.23098876557229203,
+      "trend": "improving",
+      "trend_magnitude": 0.0017199001286440656
+    },
+    "mean_time_to_recovery": {
+      "current_value": 0.0,
+      "average_value": 1.875,
+      "min_value": 0.0,
+      "max_value": 15.0,
+      "trend": "declining",
+      "trend_magnitude": 1.2499999999999996
+    },
+    "uptime_percentage": {
+      "current_value": 99.97507397268403,
+      "average_value": 99.6730899380337,
+      "min_value": 99.3155591238028,
+      "max_value": 99.9839078224885,
+      "trend": "improving",
+      "trend_magnitude": 0.006982434590720383
+    },
+    "features_released": {
+      "current_value": 0.0,
+      "average_value": 0.375,
+      "min_value": 0.0,
+      "max_value": 3.0,
+      "trend": "declining",
+      "trend_magnitude": 0.24999999999999986
+    },
+    "experiments_completed": {
+      "current_value": 0.0,
+      "average_value": 1.5,
+      "min_value": 0.0,
+      "max_value": 12.0,
+      "trend": "declining",
+      "trend_magnitude": 0.9999999999999994
+    }
+  },
+  "trends": {},
+  "recommendations": [
+    {
+      "category": "model_performance",
+      "priority": "high",
+      "message": "Model accuracy is 0.8%. Consider model retraining.",
+      "suggested_actions": [
+        "Retrain models with recent data",
+        "Experiment with different algorithms",
+        "Review feature engineering"
+      ]
+    }
+  ],
+  "data_points": 113
+}

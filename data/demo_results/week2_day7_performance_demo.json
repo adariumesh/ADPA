@@ -1,0 +1,65 @@
+{
+  "timestamp": "2025-11-07T18:06:45.577160",
+  "dashboard_widgets_created": 8,
+  "performance_data_points": 7,
+  "recommendations_generated": 1,
+  "performance_summary": [
+    {
+      "day": 1,
+      "executions": 130,
+      "success_rate": 93.84615384615384,
+      "avg_time": 18.76153846153846,
+      "throughput": 191.8819188191882,
+      "cost_per_exec": 0.40674987715567884
+    },
+    {
+      "day": 2,
+      "executions": 90,
+      "success_rate": 91.11111111111111,
+      "avg_time": 53.955555555555556,
+      "throughput": 66.72158154859967,
+      "cost_per_exec": 0.3241532635250101
+    },
+    {
+      "day": 3,
+      "executions": 118,
+      "success_rate": 94.0677966101695,
+      "avg_time": 23.78813559322034,
+      "throughput": 151.33594584966156,
+      "cost_per_exec": 0.31834877644816156
+    },
+    {
+      "day": 4,
+      "executions": 93,
+      "success_rate": 94.6236559139785,
+      "avg_time": 49.61290322580645,
+      "throughput": 72.56176853055916,
+      "cost_per_exec": 0.4960747903250148
+    },
+    {
+      "day": 5,
+      "executions": 103,
+      "success_rate": 97.0873786407767,
+      "avg_time": 17.660194174757283,
+      "throughput": 203.8482682792743,
+      "cost_per_exec": 0.5459842395768371
+    },
+    {
+      "day": 6,
+      "executions": 104,
+      "success_rate": 93.26923076923077,
+      "avg_time": 52.25961538461539,
+      "throughput": 68.88684452621895,
+      "cost_per_exec": 0.33000104272598263
+    },
+    {
+      "day": 7,
+      "executions": 93,
+      "success_rate": 95.6989247311828,
+      "avg_time": 28.06451612903226,
+      "throughput": 128.27586206896552,
+      "cost_per_exec": 0.7521438096679212
+    }
+  ],
+  "real_time_status": "healthy"
+}

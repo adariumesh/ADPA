@@ -1,0 +1,17 @@
+{
+  "timestamp": "2025-11-07T18:00:49.840663",
+  "ec2_instances_monitored": 2,
+  "sagemaker_endpoints_monitored": 1,
+  "rds_instances_monitored": 1,
+  "overall_health_score": 100.0,
+  "recommendations_generated": 0,
+  "infrastructure_summary": {
+    "timestamp": "2025-11-07T18:00:49.840650",
+    "ec2_instances": 2,
+    "sagemaker_endpoints": 1,
+    "rds_instances": 1,
+    "healthy_components": 4,
+    "warning_components": 0,
+    "critical_components": 0
+  }
+}

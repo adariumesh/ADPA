@@ -1,0 +1,150 @@
+{
+  "widgets": [
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 0,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Pipeline Execution Overview",
+        "metrics": [
+          "PipelineExecutions",
+          "SuccessRate",
+          "FailureRate",
+          "ExecutionDuration"
+        ],
+        "view": "timeSeries",
+        "period": 300
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 0,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Execution Performance Metrics",
+        "metrics": [
+          "AverageProcessingTime",
+          "ThroughputPerHour",
+          "DataVolumeProcessed",
+          "QueueDepth"
+        ],
+        "view": "timeSeries",
+        "period": 300
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 6,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "title": "Resource Utilization",
+        "metrics": [
+          "CPUUtilization",
+          "MemoryUtilization",
+          "NetworkIn",
+          "NetworkOut"
+        ],
+        "view": "timeSeries",
+        "period": 300
+      }
+    },
+    {
+      "type": "metric",
+      "x": 8,
+      "y": 6,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "title": "Cost Analytics",
+        "metrics": [
+          "HourlyCost",
+          "CostPerExecution",
+          "CostPerGB",
+          "EstimatedMonthlyCost"
+        ],
+        "view": "timeSeries",
+        "period": 300
+      }
+    },
+    {
+      "type": "metric",
+      "x": 16,
+      "y": 6,
+      "width": 8,
+      "height": 6,
+      "properties": {
+        "title": "Data Processing Performance",
+        "metrics": [
+          "DataIngestionRate",
+          "DataValidationErrors",
+          "DataQualityScore",
+          "ProcessingLatency"
+        ],
+        "view": "timeSeries",
+        "period": 300
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 12,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Model Performance Analytics",
+        "metrics": [
+          "ModelAccuracy",
+          "ModelPrecision",
+          "ModelRecall",
+          "ModelF1Score",
+          "InferenceLatency"
+        ],
+        "view": "timeSeries",
+        "period": 300
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 12,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "Error Analysis",
+        "metrics": [
+          "TotalErrors",
+          "CriticalErrors",
+          "TimeoutErrors",
+          "ValidationErrors",
+          "ErrorRate"
+        ],
+        "view": "timeSeries",
+        "period": 300
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 18,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "title": "Performance Trends & Capacity Planning",
+        "metrics": [
+          "PerformanceTrend",
+          "CapacityUtilization",
+          "GrowthRate",
+          "EfficiencyScore"
+        ],
+        "view": "timeSeries",
+        "period": 300
+      }
+    }
+  ]
+}

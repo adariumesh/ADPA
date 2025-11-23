@@ -1,0 +1,52 @@
+{
+  "timestamp": "2025-11-07T18:17:32.976628",
+  "training_data_points": 84,
+  "anomaly_tests_performed": 6,
+  "detection_accuracy": 100.0,
+  "trend_analysis_completed": true,
+  "overall_health_score": 95,
+  "detection_results": [
+    {
+      "scenario": "Normal Operations",
+      "expected_anomaly": false,
+      "detected_anomaly": false,
+      "severity": "low",
+      "score": 0.7806542904697467
+    },
+    {
+      "scenario": "Normal Operations",
+      "expected_anomaly": false,
+      "detected_anomaly": false,
+      "severity": "low",
+      "score": 1.5434128240070022
+    },
+    {
+      "scenario": "CPU Spike Anomaly",
+      "expected_anomaly": true,
+      "detected_anomaly": true,
+      "severity": "medium",
+      "score": 2.7833897656197677
+    },
+    {
+      "scenario": "Normal Operations",
+      "expected_anomaly": false,
+      "detected_anomaly": false,
+      "severity": "low",
+      "score": 1.1319230934823792
+    },
+    {
+      "scenario": "Error Rate Spike",
+      "expected_anomaly": true,
+      "detected_anomaly": true,
+      "severity": "critical",
+      "score": 13.652181308034649
+    },
+    {
+      "scenario": "Normal Operations",
+      "expected_anomaly": false,
+      "detected_anomaly": false,
+      "severity": "low",
+      "score": 1.1697115779238885
+    }
+  ]
+}

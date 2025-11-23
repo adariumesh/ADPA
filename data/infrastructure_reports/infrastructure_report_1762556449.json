@@ -1,0 +1,161 @@
+{
+  "generated_at": "2025-11-07T18:00:49.840180",
+  "ec2_instances": [
+    {
+      "instance_id": "i-1234567890abcdef0",
+      "instance_type": "m5.large",
+      "launch_time": "2025-11-02T18:00:49.840146",
+      "state": "running",
+      "metrics": {
+        "cpuutilization": {
+          "average": 24.644017254769587,
+          "maximum": 72.25837505537484,
+          "timestamp": "2025-11-07T18:00:49.840149"
+        },
+        "networkin": {
+          "average": 3331738.847844566,
+          "maximum": 820271754.7794985,
+          "timestamp": "2025-11-07T18:00:49.840150"
+        },
+        "networkout": {
+          "average": 327806838.1920203,
+          "maximum": 824381382.175541,
+          "timestamp": "2025-11-07T18:00:49.840152"
+        },
+        "diskreadops": {
+          "average": 128.6380681852216,
+          "maximum": 1364.7422860046195,
+          "timestamp": "2025-11-07T18:00:49.840153"
+        },
+        "diskwriteops": {
+          "average": 324.94827375559885,
+          "maximum": 921.1669444392256,
+          "timestamp": "2025-11-07T18:00:49.840154"
+        }
+      },
+      "health_status": {
+        "status": "healthy",
+        "score": 100,
+        "issues": []
+      }
+    },
+    {
+      "instance_id": "i-0987654321fedcba0",
+      "instance_type": "m5.xlarge",
+      "launch_time": "2025-11-05T18:00:49.840147",
+      "state": "running",
+      "metrics": {
+        "cpuutilization": {
+          "average": 68.99617722851232,
+          "maximum": 68.55847245825001,
+          "timestamp": "2025-11-07T18:00:49.840156"
+        },
+        "networkin": {
+          "average": 52441627.59217135,
+          "maximum": 614653019.2001903,
+          "timestamp": "2025-11-07T18:00:49.840157"
+        },
+        "networkout": {
+          "average": 34610831.253562674,
+          "maximum": 532910186.36976814,
+          "timestamp": "2025-11-07T18:00:49.840158"
+        },
+        "diskreadops": {
+          "average": 341.9576071677358,
+          "maximum": 1218.576438319285,
+          "timestamp": "2025-11-07T18:00:49.840159"
+        },
+        "diskwriteops": {
+          "average": 677.4645513695355,
+          "maximum": 878.1099334803783,
+          "timestamp": "2025-11-07T18:00:49.840160"
+        }
+      },
+      "health_status": {
+        "status": "healthy",
+        "score": 100,
+        "issues": []
+      }
+    }
+  ],
+  "sagemaker_endpoints": [
+    {
+      "endpoint_name": "adpa-ml-endpoint",
+      "status": "InService",
+      "creation_time": "2025-11-07T06:00:49.840162",
+      "metrics": {
+        "invocations": {
+          "value": 580,
+          "timestamp": "2025-11-07T18:00:49.840165"
+        },
+        "modellatency": {
+          "value": 930.5310238444723,
+          "timestamp": "2025-11-07T18:00:49.840166"
+        },
+        "invocationerrors": {
+          "value": 6,
+          "timestamp": "2025-11-07T18:00:49.840168"
+        },
+        "cpuutilization": {
+          "value": 63.77216504246271,
+          "timestamp": "2025-11-07T18:00:49.840169"
+        },
+        "memoryutilization": {
+          "value": 56.2263876035235,
+          "timestamp": "2025-11-07T18:00:49.840170"
+        }
+      },
+      "health_status": {
+        "status": "healthy",
+        "score": 100,
+        "issues": []
+      }
+    }
+  ],
+  "rds_instances": [
+    {
+      "db_identifier": "adpa-db-instance",
+      "engine": "postgres",
+      "instance_class": "db.t3.micro",
+      "status": "available",
+      "metrics": {
+        "cpuutilization": {
+          "average": 73.64136321511697,
+          "maximum": 81.16851440354716,
+          "timestamp": "2025-11-07T18:00:49.840173"
+        },
+        "databaseconnections": {
+          "average": 37.06215025719581,
+          "maximum": 76.22315234895632,
+          "timestamp": "2025-11-07T18:00:49.840174"
+        },
+        "freestoragespace": {
+          "average": 4752355285.516565,
+          "maximum": 17579142376.98635,
+          "timestamp": "2025-11-07T18:00:49.840176"
+        },
+        "readlatency": {
+          "average": 0.05202034912133685,
+          "maximum": 0.18577329373508472,
+          "timestamp": "2025-11-07T18:00:49.840177"
+        },
+        "writelatency": {
+          "average": 0.13246717287971108,
+          "maximum": 0.2666799860431095,
+          "timestamp": "2025-11-07T18:00:49.840178"
+        }
+      },
+      "health_status": {
+        "status": "healthy",
+        "score": 100,
+        "issues": []
+      }
+    }
+  ],
+  "overall_health": {
+    "status": "healthy",
+    "score": 100.0,
+    "total_components": 4
+  },
+  "recommendations": []
+}

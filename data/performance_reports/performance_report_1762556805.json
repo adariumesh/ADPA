@@ -1,0 +1,76 @@
+{
+  "report_period": "7 days",
+  "generated_at": "2025-11-07T23:06:45.571357",
+  "executive_summary": {},
+  "performance_trends": {
+    "success_rate": {
+      "current": 95.6989247311828,
+      "average": 94.24346451751477,
+      "trend": "improving",
+      "trend_magnitude": 0.46050478578332493
+    },
+    "average_execution_time": {
+      "current": 28.06451612903226,
+      "average": 34.87177978921797,
+      "trend": "improving",
+      "trend_magnitude": 0.6567539729334959
+    },
+    "throughput_per_hour": {
+      "current": 128.27586206896552,
+      "average": 126.21602708892394,
+      "trend": "declining",
+      "trend_magnitude": 4.784832923779188
+    },
+    "error_rate": {
+      "current": 2.1505376344086025,
+      "average": 5.002620634803322,
+      "trend": "declining",
+      "trend_magnitude": 0.14123616484713566
+    }
+  },
+  "resource_utilization": {
+    "cpu_utilization": {
+      "current": 52.135969464534575,
+      "average": 54.54229604601412,
+      "peak": 76.10652388002288,
+      "minimum": 41.13746792979921
+    },
+    "memory_utilization": {
+      "current": 42.30326619926522,
+      "average": 58.38494416380267,
+      "peak": 75.38774607587035,
+      "minimum": 42.30326619926522
+    },
+    "resource_efficiency": {
+      "current": 52.780382168100104,
+      "average": 43.536379895091606,
+      "peak": 57.71228658887032,
+      "minimum": 24.252865022053385
+    }
+  },
+  "cost_analysis": {
+    "cost_per_execution": {
+      "current": 0.7521438096679212,
+      "average": 0.4533508284892295,
+      "trend": "increasing"
+    },
+    "cost_per_gb": {
+      "current": 1.0312743472775487,
+      "average": 0.394324352767473,
+      "trend": "increasing"
+    }
+  },
+  "recommendations": [
+    {
+      "category": "cost_optimization",
+      "priority": "medium",
+      "message": "Execution costs are increasing. Review resource utilization.",
+      "suggested_actions": [
+        "Analyze resource usage patterns",
+        "Consider spot instances",
+        "Optimize processing algorithms"
+      ]
+    }
+  ],
+  "data_points": 7
+}

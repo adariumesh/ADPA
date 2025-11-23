@@ -1,0 +1,780 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ADPA (Autonomous Data Pipeline Agent) - Complete Infrastructure Stack'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: 'adpa'
+    Description: 'Name of the ADPA project'
+  
+  Environment:
+    Type: String
+    Default: 'development'
+    AllowedValues: ['development', 'staging', 'production']
+    Description: 'Environment name'
+  
+  VpcCidr:
+    Type: String
+    Default: '10.0.0.0/16'
+    Description: 'CIDR block for VPC'
+  
+  PrivateSubnetCidr:
+    Type: String
+    Default: '10.0.1.0/24'
+    Description: 'CIDR block for private subnet'
+  
+  PublicSubnetCidr:
+    Type: String
+    Default: '10.0.2.0/24'
+    Description: 'CIDR block for public subnet'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Project Configuration"
+        Parameters:
+          - ProjectName
+          - Environment
+      - Label:
+          default: "Network Configuration"
+        Parameters:
+          - VpcCidr
+          - PrivateSubnetCidr
+          - PublicSubnetCidr
+
+Resources:
+  # ============================================================================
+  # NETWORKING & SECURITY
+  # ============================================================================
+  
+  # VPC Configuration
+  ADPAVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-vpc-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Internet Gateway
+  ADPAInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-igw-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+
+  ADPAAttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref ADPAVpc
+      InternetGatewayId: !Ref ADPAInternetGateway
+
+  # Subnets
+  ADPAPrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref ADPAVpc
+      CidrBlock: !Ref PrivateSubnetCidr
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-private-subnet-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+
+  ADPAPublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref ADPAVpc
+      CidrBlock: !Ref PublicSubnetCidr
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-public-subnet-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # NAT Gateway
+  ADPANatGatewayEip:
+    Type: AWS::EC2::EIP
+    DependsOn: ADPAAttachGateway
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-nat-eip-${Environment}'
+
+  ADPANatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt ADPANatGatewayEip.AllocationId
+      SubnetId: !Ref ADPAPublicSubnet
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-nat-gateway-${Environment}'
+
+  # Route Tables
+  ADPAPrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref ADPAVpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-private-rt-${Environment}'
+
+  ADPAPublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref ADPAVpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-public-rt-${Environment}'
+
+  ADPAPrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref ADPAPrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref ADPANatGateway
+
+  ADPAPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: ADPAAttachGateway
+    Properties:
+      RouteTableId: !Ref ADPAPublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref ADPAInternetGateway
+
+  # Subnet Route Table Associations
+  ADPAPrivateSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref ADPAPrivateSubnet
+      RouteTableId: !Ref ADPAPrivateRouteTable
+
+  ADPAPublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref ADPAPublicSubnet
+      RouteTableId: !Ref ADPAPublicRouteTable
+
+  # Security Groups
+  ADPALambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for ADPA Lambda functions
+      VpcId: !Ref ADPAVpc
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-lambda-sg-${Environment}'
+
+  ADPASageMakerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for ADPA SageMaker resources
+      VpcId: !Ref ADPAVpc
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-sagemaker-sg-${Environment}'
+
+  # ============================================================================
+  # KMS ENCRYPTION
+  # ============================================================================
+  
+  ADPAKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub 'KMS key for ADPA ${Environment} environment encryption'
+      KeyPolicy:
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow ADPA services
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - sagemaker.amazonaws.com
+                - s3.amazonaws.com
+                - glue.amazonaws.com
+            Action:
+              - 'kms:Decrypt'
+              - 'kms:DescribeKey'
+              - 'kms:Encrypt'
+              - 'kms:GenerateDataKey*'
+              - 'kms:ReEncrypt*'
+            Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-kms-key-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+
+  ADPAKMSAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${ProjectName}-${Environment}'
+      TargetKeyId: !Ref ADPAKMSKey
+
+  # ============================================================================
+  # S3 STORAGE
+  # ============================================================================
+  
+  # Primary Data Bucket
+  ADPADataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-data-${AWS::AccountId}-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref ADPAKMSKey
+            BucketKeyEnabled: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteIncompleteMultipartUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+          - Id: TransitionToIA
+            Status: Enabled
+            Transitions:
+              - Days: 30
+                StorageClass: STANDARD_IA
+          - Id: TransitionToGlacier
+            Status: Enabled
+            Transitions:
+              - Days: 90
+                StorageClass: GLACIER
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      NotificationConfiguration:
+        CloudWatchConfigurations:
+          - Event: 's3:ObjectCreated:*'
+            CloudWatchConfiguration:
+              LogGroupName: !Ref ADPALogGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-data-bucket-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Model Artifacts Bucket
+  ADPAModelBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-models-${AWS::AccountId}-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref ADPAKMSKey
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-model-bucket-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ============================================================================
+  # IAM ROLES AND POLICIES
+  # ============================================================================
+  
+  # Lambda Execution Role
+  ADPALambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-lambda-execution-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Policies:
+        - PolicyName: ADPALambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:PutObject'
+                  - 's3:DeleteObject'
+                Resource: 
+                  - !Sub '${ADPADataBucket}/*'
+                  - !Sub '${ADPAModelBucket}/*'
+              - Effect: Allow
+                Action:
+                  - 's3:ListBucket'
+                Resource: 
+                  - !GetAtt ADPADataBucket.Arn
+                  - !GetAtt ADPAModelBucket.Arn
+              - Effect: Allow
+                Action:
+                  - 'kms:Decrypt'
+                  - 'kms:Encrypt'
+                  - 'kms:GenerateDataKey'
+                Resource: !GetAtt ADPAKMSKey.Arn
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+              - Effect: Allow
+                Action:
+                  - 'secretsmanager:GetSecretValue'
+                Resource: !Ref ADPASecretsManagerSecret
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # SageMaker Execution Role
+  ADPASageMakerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-sagemaker-execution-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sagemaker.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSageMakerFullAccess
+      Policies:
+        - PolicyName: ADPASageMakerPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:PutObject'
+                  - 's3:DeleteObject'
+                  - 's3:ListBucket'
+                Resource: 
+                  - !GetAtt ADPADataBucket.Arn
+                  - !Sub '${ADPADataBucket}/*'
+                  - !GetAtt ADPAModelBucket.Arn
+                  - !Sub '${ADPAModelBucket}/*'
+              - Effect: Allow
+                Action:
+                  - 'kms:Decrypt'
+                  - 'kms:Encrypt'
+                  - 'kms:GenerateDataKey'
+                Resource: !GetAtt ADPAKMSKey.Arn
+              - Effect: Allow
+                Action:
+                  - 'ec2:CreateNetworkInterface'
+                  - 'ec2:CreateNetworkInterfacePermission'
+                  - 'ec2:DeleteNetworkInterface'
+                  - 'ec2:DeleteNetworkInterfacePermission'
+                  - 'ec2:DescribeNetworkInterfaces'
+                  - 'ec2:DescribeVpcs'
+                  - 'ec2:DescribeDhcpOptions'
+                  - 'ec2:DescribeSubnets'
+                  - 'ec2:DescribeSecurityGroups'
+                Resource: '*'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Glue Service Role
+  ADPAGlueServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-glue-service-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+        - PolicyName: ADPAGluePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:PutObject'
+                  - 's3:DeleteObject'
+                  - 's3:ListBucket'
+                Resource: 
+                  - !GetAtt ADPADataBucket.Arn
+                  - !Sub '${ADPADataBucket}/*'
+              - Effect: Allow
+                Action:
+                  - 'kms:Decrypt'
+                  - 'kms:Encrypt'
+                  - 'kms:GenerateDataKey'
+                Resource: !GetAtt ADPAKMSKey.Arn
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Step Functions Execution Role
+  ADPAStepFunctionsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-stepfunctions-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ADPAStepFunctionsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                Resource: !GetAtt ADPADataProcessor.Arn
+              - Effect: Allow
+                Action:
+                  - 'sagemaker:CreateTrainingJob'
+                  - 'sagemaker:DescribeTrainingJob'
+                  - 'sagemaker:StopTrainingJob'
+                  - 'sagemaker:CreateAutoMLJob'
+                  - 'sagemaker:DescribeAutoMLJob'
+                  - 'sagemaker:StopAutoMLJob'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'glue:StartJobRun'
+                  - 'glue:GetJobRun'
+                  - 'glue:BatchStopJobRun'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'iam:PassRole'
+                Resource: 
+                  - !GetAtt ADPASageMakerExecutionRole.Arn
+                  - !GetAtt ADPAGlueServiceRole.Arn
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogDelivery'
+                  - 'logs:GetLogDelivery'
+                  - 'logs:UpdateLogDelivery'
+                  - 'logs:DeleteLogDelivery'
+                  - 'logs:ListLogDeliveries'
+                  - 'logs:PutResourcePolicy'
+                  - 'logs:DescribeResourcePolicies'
+                  - 'logs:DescribeLogGroups'
+                Resource: '*'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ============================================================================
+  # SECRETS MANAGER
+  # ============================================================================
+  
+  ADPASecretsManagerSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '${ProjectName}/${Environment}/api-keys'
+      Description: 'API keys and sensitive configuration for ADPA'
+      SecretString: !Sub |
+        {
+          "openai_api_key": "your-openai-api-key",
+          "anthropic_api_key": "your-anthropic-api-key",
+          "default_region": "${AWS::Region}",
+          "environment": "${Environment}"
+        }
+      KmsKeyId: !Ref ADPAKMSKey
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ============================================================================
+  # LAMBDA FUNCTIONS
+  # ============================================================================
+  
+  # Main Data Processing Lambda
+  ADPADataProcessor:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-data-processor-${Environment}'
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Code:
+        ZipFile: |
+          import json
+          import logging
+          
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          def lambda_handler(event, context):
+              logger.info(f"Processing event: {event}")
+              
+              # Placeholder for ADPA data processing logic
+              # This will be replaced with actual deployment package
+              
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps({
+                      'message': 'ADPA data processing completed',
+                      'event': event
+                  })
+              }
+      Role: !GetAtt ADPALambdaExecutionRole.Arn
+      Timeout: 900
+      MemorySize: 1024
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          DATA_BUCKET: !Ref ADPADataBucket
+          MODEL_BUCKET: !Ref ADPAModelBucket
+          KMS_KEY_ID: !Ref ADPAKMSKey
+          SECRETS_ARN: !Ref ADPASecretsManagerSecret
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref ADPALambdaSecurityGroup
+        SubnetIds:
+          - !Ref ADPAPrivateSubnet
+      DeadLetterConfig:
+        TargetArn: !GetAtt ADPADeadLetterQueue.Arn
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Error Handler Lambda
+  ADPAErrorHandler:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-error-handler-${Environment}'
+      Runtime: python3.11
+      Handler: error_handler.lambda_handler
+      Code:
+        ZipFile: |
+          import json
+          import logging
+          
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          def lambda_handler(event, context):
+              logger.error(f"Pipeline error occurred: {event}")
+              
+              # Placeholder for error handling logic
+              # This will implement intelligent error recovery
+              
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps({
+                      'message': 'Error handled',
+                      'recovery_action': 'retry_with_modifications'
+                  })
+              }
+      Role: !GetAtt ADPALambdaExecutionRole.Arn
+      Timeout: 300
+      MemorySize: 512
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref ADPALambdaSecurityGroup
+        SubnetIds:
+          - !Ref ADPAPrivateSubnet
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ============================================================================
+  # SQS DEAD LETTER QUEUE
+  # ============================================================================
+  
+  ADPADeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${ProjectName}-dlq-${Environment}'
+      KmsMasterKeyId: !Ref ADPAKMSKey
+      MessageRetentionPeriod: 1209600  # 14 days
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ============================================================================
+  # CLOUDWATCH LOGGING
+  # ============================================================================
+  
+  ADPALogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/${ProjectName}/${Environment}'
+      RetentionInDays: 30
+      KmsKeyId: !GetAtt ADPAKMSKey.Arn
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Step Functions Log Group
+  ADPAStepFunctionsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/stepfunctions/${ProjectName}-${Environment}'
+      RetentionInDays: 30
+      KmsKeyId: !GetAtt ADPAKMSKey.Arn
+
+  # ============================================================================
+  # CLOUDWATCH ALARMS AND MONITORING
+  # ============================================================================
+  
+  # Lambda Error Rate Alarm
+  ADPALambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-lambda-errors-${Environment}'
+      AlarmDescription: 'High error rate in ADPA Lambda functions'
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ADPADataProcessor
+      TreatMissingData: notBreaching
+
+  # S3 Bucket Size Alarm
+  ADPAS3BucketSizeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-s3-size-${Environment}'
+      AlarmDescription: 'S3 bucket size monitoring'
+      MetricName: BucketSizeBytes
+      Namespace: AWS/S3
+      Statistic: Average
+      Period: 86400
+      EvaluationPeriods: 1
+      Threshold: 107374182400  # 100 GB
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: BucketName
+          Value: !Ref ADPADataBucket
+        - Name: StorageType
+          Value: StandardStorage
+      TreatMissingData: notBreaching
+
+# ============================================================================
+# OUTPUTS
+# ============================================================================
+
+Outputs:
+  VpcId:
+    Description: 'VPC ID for ADPA infrastructure'
+    Value: !Ref ADPAVpc
+    Export:
+      Name: !Sub '${ProjectName}-vpc-id-${Environment}'
+
+  PrivateSubnetId:
+    Description: 'Private subnet ID'
+    Value: !Ref ADPAPrivateSubnet
+    Export:
+      Name: !Sub '${ProjectName}-private-subnet-${Environment}'
+
+  DataBucketName:
+    Description: 'S3 bucket for data storage'
+    Value: !Ref ADPADataBucket
+    Export:
+      Name: !Sub '${ProjectName}-data-bucket-${Environment}'
+
+  ModelBucketName:
+    Description: 'S3 bucket for model artifacts'
+    Value: !Ref ADPAModelBucket
+    Export:
+      Name: !Sub '${ProjectName}-model-bucket-${Environment}'
+
+  LambdaExecutionRoleArn:
+    Description: 'Lambda execution role ARN'
+    Value: !GetAtt ADPALambdaExecutionRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-lambda-role-arn-${Environment}'
+
+  SageMakerExecutionRoleArn:
+    Description: 'SageMaker execution role ARN'
+    Value: !GetAtt ADPASageMakerExecutionRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-sagemaker-role-arn-${Environment}'
+
+  StepFunctionsRoleArn:
+    Description: 'Step Functions execution role ARN'
+    Value: !GetAtt ADPAStepFunctionsRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-stepfunctions-role-arn-${Environment}'
+
+  DataProcessorFunctionArn:
+    Description: 'Main data processing Lambda function ARN'
+    Value: !GetAtt ADPADataProcessor.Arn
+    Export:
+      Name: !Sub '${ProjectName}-data-processor-arn-${Environment}'
+
+  KMSKeyId:
+    Description: 'KMS key ID for encryption'
+    Value: !Ref ADPAKMSKey
+    Export:
+      Name: !Sub '${ProjectName}-kms-key-${Environment}'
+
+  SecretsManagerArn:
+    Description: 'Secrets Manager secret ARN'
+    Value: !Ref ADPASecretsManagerSecret
+    Export:
+      Name: !Sub '${ProjectName}-secrets-arn-${Environment}'
+
+  LogGroupName:
+    Description: 'CloudWatch log group name'
+    Value: !Ref ADPALogGroup
+    Export:
+      Name: !Sub '${ProjectName}-log-group-${Environment}'
