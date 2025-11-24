@@ -203,6 +203,7 @@ Resources:
     Properties:
       Description: !Sub 'KMS key for ADPA ${Environment} environment encryption'
       KeyPolicy:
+        Version: '2012-10-17'
         Statement:
           - Sid: Enable IAM User Permissions
             Effect: Allow
@@ -210,6 +211,20 @@ Resources:
               AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
             Action: 'kms:*'
             Resource: '*'
+          - Sid: Allow CloudWatch Logs
+            Effect: Allow
+            Principal:
+              Service: logs.amazonaws.com
+            Action:
+              - 'kms:Decrypt'
+              - 'kms:DescribeKey'
+              - 'kms:Encrypt'
+              - 'kms:GenerateDataKey*'
+              - 'kms:ReEncrypt*'
+            Resource: '*'
+            Condition:
+              ArnEquals:
+                'kms:EncryptionContext:aws:logs:arn': !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
           - Sid: Allow ADPA services
             Effect: Allow
             Principal:
@@ -244,6 +259,8 @@ Resources:
   # Primary Data Bucket
   ADPADataBucket:
     Type: AWS::S3::Bucket
+    DependsOn: 
+      - ADPAKMSKey
     Properties:
       BucketName: !Sub '${ProjectName}-data-${AWS::AccountId}-${Environment}'
       BucketEncryption:
@@ -263,23 +280,18 @@ Resources:
           - Id: TransitionToIA
             Status: Enabled
             Transitions:
-              - Days: 30
+              - TransitionInDays: 30
                 StorageClass: STANDARD_IA
           - Id: TransitionToGlacier
             Status: Enabled
             Transitions:
-              - Days: 90
+              - TransitionInDays: 90
                 StorageClass: GLACIER
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
-      NotificationConfiguration:
-        CloudWatchConfigurations:
-          - Event: 's3:ObjectCreated:*'
-            CloudWatchConfiguration:
-              LogGroupName: !Ref ADPALogGroup
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-data-bucket-${Environment}'
@@ -289,6 +301,7 @@ Resources:
   # Model Artifacts Bucket
   ADPAModelBucket:
     Type: AWS::S3::Bucket
+    DependsOn: ADPAKMSKey
     Properties:
       BucketName: !Sub '${ProjectName}-models-${AWS::AccountId}-${Environment}'
       BucketEncryption:
@@ -519,6 +532,7 @@ Resources:
   
   ADPASecretsManagerSecret:
     Type: AWS::SecretsManager::Secret
+    DependsOn: ADPAKMSKey
     Properties:
       Name: !Sub '${ProjectName}/${Environment}/api-keys'
       Description: 'API keys and sensitive configuration for ADPA'
@@ -636,6 +650,7 @@ Resources:
   
   ADPADeadLetterQueue:
     Type: AWS::SQS::Queue
+    DependsOn: ADPAKMSKey
     Properties:
       QueueName: !Sub '${ProjectName}-dlq-${Environment}'
       KmsMasterKeyId: !Ref ADPAKMSKey
@@ -650,10 +665,11 @@ Resources:
   
   ADPALogGroup:
     Type: AWS::Logs::LogGroup
+    DependsOn: ADPAKMSKey
     Properties:
       LogGroupName: !Sub '/aws/${ProjectName}/${Environment}'
       RetentionInDays: 30
-      KmsKeyId: !GetAtt ADPAKMSKey.Arn
+      KmsKeyId: !Ref ADPAKMSKey
       Tags:
         - Key: Project
           Value: !Ref ProjectName
@@ -661,10 +677,11 @@ Resources:
   # Step Functions Log Group
   ADPAStepFunctionsLogGroup:
     Type: AWS::Logs::LogGroup
+    DependsOn: ADPAKMSKey
     Properties:
       LogGroupName: !Sub '/aws/stepfunctions/${ProjectName}-${Environment}'
       RetentionInDays: 30
-      KmsKeyId: !GetAtt ADPAKMSKey.Arn
+      KmsKeyId: !Ref ADPAKMSKey
 
   # ============================================================================
   # CLOUDWATCH ALARMS AND MONITORING
