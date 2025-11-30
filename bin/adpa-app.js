@@ -1,0 +1,15 @@
+#!/usr/bin/env node
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+require("source-map-support/register");
+const aws_cdk_lib_1 = require("aws-cdk-lib");
+const adpa_data_stack_1 = require("../lib/adpa-data-stack");
+const app = new aws_cdk_lib_1.App();
+// Prefer resolving account/region from your AWS profile or env vars
+// Set via: export AWS_PROFILE=adpa (optional), export CDK_DEFAULT_ACCOUNT/REGION, or pass --profile at deploy time
+const env = {
+    account: process.env.CDK_DEFAULT_ACCOUNT,
+    region: process.env.CDK_DEFAULT_REGION || 'us-east-1',
+};
+new adpa_data_stack_1.AdpaDataStack(app, 'AdpaDataStack', { env });
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiYWRwYS1hcHAuanMiLCJzb3VyY2VSb290IjoiIiwic291cmNlcyI6WyJhZHBhLWFwcC50cyJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiOzs7QUFDQSx1Q0FBcUM7QUFDckMsNkNBQWtDO0FBQ2xDLDREQUF1RDtBQUV2RCxNQUFNLEdBQUcsR0FBRyxJQUFJLGlCQUFHLEVBQUUsQ0FBQztBQUV0QixvRUFBb0U7QUFDcEUsbUhBQW1IO0FBQ25ILE1BQU0sR0FBRyxHQUFHO0lBQ1YsT0FBTyxFQUFFLE9BQU8sQ0FBQyxHQUFHLENBQUMsbUJBQW1CO0lBQ3hDLE1BQU0sRUFBRSxPQUFPLENBQUMsR0FBRyxDQUFDLGtCQUFrQixJQUFJLFdBQVc7Q0FDdEQsQ0FBQztBQUVGLElBQUksK0JBQWEsQ0FBQyxHQUFHLEVBQUUsZUFBZSxFQUFFLEVBQUUsR0FBRyxFQUFFLENBQUMsQ0FBQyIsInNvdXJjZXNDb250ZW50IjpbIiMhL3Vzci9iaW4vZW52IG5vZGVcbmltcG9ydCAnc291cmNlLW1hcC1zdXBwb3J0L3JlZ2lzdGVyJztcbmltcG9ydCB7IEFwcCB9IGZyb20gJ2F3cy1jZGstbGliJztcbmltcG9ydCB7IEFkcGFEYXRhU3RhY2sgfSBmcm9tICcuLi9saWIvYWRwYS1kYXRhLXN0YWNrJztcblxuY29uc3QgYXBwID0gbmV3IEFwcCgpO1xuXG4vLyBQcmVmZXIgcmVzb2x2aW5nIGFjY291bnQvcmVnaW9uIGZyb20geW91ciBBV1MgcHJvZmlsZSBvciBlbnYgdmFyc1xuLy8gU2V0IHZpYTogZXhwb3J0IEFXU19QUk9GSUxFPWFkcGEgKG9wdGlvbmFsKSwgZXhwb3J0IENES19ERUZBVUxUX0FDQ09VTlQvUkVHSU9OLCBvciBwYXNzIC0tcHJvZmlsZSBhdCBkZXBsb3kgdGltZVxuY29uc3QgZW52ID0ge1xuICBhY2NvdW50OiBwcm9jZXNzLmVudi5DREtfREVGQVVMVF9BQ0NPVU5ULFxuICByZWdpb246IHByb2Nlc3MuZW52LkNES19ERUZBVUxUX1JFR0lPTiB8fCAndXMtZWFzdC0xJyxcbn07XG5cbm5ldyBBZHBhRGF0YVN0YWNrKGFwcCwgJ0FkcGFEYXRhU3RhY2snLCB7IGVudiB9KTsiXX0=

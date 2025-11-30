@@ -106,11 +106,14 @@ fi
 print_header "Waiting for Stack Deployment to Complete"
 print_status "This may take 10-15 minutes..."
 
+set +e
 aws cloudformation wait $WAIT_CONDITION \
     --stack-name "$STACK_NAME" \
     --region "$REGION"
+WAIT_EXIT_CODE=$?
+set -e
 
-if [ $? -eq 0 ]; then
+if [ $WAIT_EXIT_CODE -eq 0 ]; then
     print_status "Stack deployment completed successfully!"
 else
     print_error "Stack deployment failed or timed out"
@@ -123,7 +126,7 @@ else
         --query 'StackEvents[0:5].[Timestamp,ResourceType,LogicalResourceId,ResourceStatus,ResourceStatusReason]' \
         --output table
     
-    exit 1
+    exit $WAIT_EXIT_CODE
 fi
 
 # Get stack outputs

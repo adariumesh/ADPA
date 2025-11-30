@@ -173,9 +173,6 @@ Resources:
       RestApiId: !Ref ADPAGlobalAPI
       DeploymentId: !Ref ADPAAPIDeployment
       StageName: !Ref Environment
-      ThrottleSettings:
-        BurstLimit: 1000
-        RateLimit: 100
       MethodSettings:
         - ResourcePath: '/*'
           HttpMethod: '*'

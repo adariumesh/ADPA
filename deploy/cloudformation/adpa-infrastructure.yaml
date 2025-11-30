@@ -351,8 +351,8 @@ Resources:
                   - 's3:PutObject'
                   - 's3:DeleteObject'
                 Resource: 
-                  - !Sub '${ADPADataBucket}/*'
-                  - !Sub '${ADPAModelBucket}/*'
+                  - !Join ['', [!GetAtt ADPADataBucket.Arn, '/*']]
+                  - !Join ['', [!GetAtt ADPAModelBucket.Arn, '/*']]
               - Effect: Allow
                 Action:
                   - 's3:ListBucket'
@@ -371,6 +371,10 @@ Resources:
                   - 'logs:CreateLogStream'
                   - 'logs:PutLogEvents'
                 Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+              - Effect: Allow
+                Action:
+                  - 'sqs:SendMessage'
+                Resource: !GetAtt ADPADeadLetterQueue.Arn
               - Effect: Allow
                 Action:
                   - 'secretsmanager:GetSecretValue'
@@ -406,9 +410,9 @@ Resources:
                   - 's3:ListBucket'
                 Resource: 
                   - !GetAtt ADPADataBucket.Arn
-                  - !Sub '${ADPADataBucket}/*'
+                  - !Join ['', [!GetAtt ADPADataBucket.Arn, '/*']]
                   - !GetAtt ADPAModelBucket.Arn
-                  - !Sub '${ADPAModelBucket}/*'
+                  - !Join ['', [!GetAtt ADPAModelBucket.Arn, '/*']]
               - Effect: Allow
                 Action:
                   - 'kms:Decrypt'
@@ -458,7 +462,7 @@ Resources:
                   - 's3:ListBucket'
                 Resource: 
                   - !GetAtt ADPADataBucket.Arn
-                  - !Sub '${ADPADataBucket}/*'
+                  - !Join ['', [!GetAtt ADPADataBucket.Arn, '/*']]
               - Effect: Allow
                 Action:
                   - 'kms:Decrypt'
@@ -669,7 +673,7 @@ Resources:
     Properties:
       LogGroupName: !Sub '/aws/${ProjectName}/${Environment}'
       RetentionInDays: 30
-      KmsKeyId: !Ref ADPAKMSKey
+      KmsKeyId: !GetAtt ADPAKMSKey.Arn
       Tags:
         - Key: Project
           Value: !Ref ProjectName
@@ -681,7 +685,7 @@ Resources:
     Properties:
       LogGroupName: !Sub '/aws/stepfunctions/${ProjectName}-${Environment}'
       RetentionInDays: 30
-      KmsKeyId: !Ref ADPAKMSKey
+      KmsKeyId: !GetAtt ADPAKMSKey.Arn
 
   # ============================================================================
   # CLOUDWATCH ALARMS AND MONITORING
