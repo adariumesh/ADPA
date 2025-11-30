@@ -1,0 +1,29 @@
+name: Deploy Lambda (demo)
+
+on:
+  # Manual trigger only – safe for demonstration
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Show branch and commit
+        run: |
+          echo "Deploying commit: $GITHUB_SHA"
+          echo "From branch: $GITHUB_REF_NAME"
+
+      - name: Package Lambda code (demo only)
+        run: |
+          mkdir -p build
+          echo "This is where we would package Lambda functions." > build/README.txt
+          ls -R
+
+      - name: Simulate deployment
+        run: |
+          echo "✅ CI pipeline finished."
+          echo "🚀 In a real setup, this step would call 'aws lambda update-function-code'."
