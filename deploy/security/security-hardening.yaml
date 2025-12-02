@@ -1,0 +1,364 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Security hardening for ADPA: WAF, Secrets Manager, KMS, VPC'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: development
+
+Resources:
+  # KMS Key for S3 encryption
+  ADPAS3EncryptionKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: KMS key for ADPA S3 bucket encryption
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow Lambda to use the key
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+              - 'kms:Decrypt'
+              - 'kms:DescribeKey'
+            Resource: '*'
+      Tags:
+        - Key: Project
+          Value: ADPA
+
+  ADPAS3EncryptionKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: alias/adpa-s3-encryption
+      TargetKeyId: !Ref ADPAS3EncryptionKey
+
+  # Secrets Manager for API Keys and Credentials
+  ADPAAPISecrets:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: adpa-api-secrets
+      Description: API keys and credentials for ADPA
+      SecretString: !Sub |
+        {
+          "openai_api_key": "YOUR_OPENAI_API_KEY",
+          "database_password": "YOUR_DB_PASSWORD",
+          "api_gateway_key": "YOUR_API_KEY"
+        }
+      KmsKeyId: !Ref ADPAS3EncryptionKey
+      Tags:
+        - Key: Project
+          Value: ADPA
+
+  # VPC for Lambda functions
+  ADPAVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: adpa-vpc
+        - Key: Project
+          Value: ADPA
+
+  # Private Subnets
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref ADPAVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: adpa-private-subnet-1
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref ADPAVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: adpa-private-subnet-2
+
+  # Security Group for Lambda
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: adpa-lambda-sg
+      GroupDescription: Security group for ADPA Lambda functions
+      VpcId: !Ref ADPAVPC
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS outbound
+      Tags:
+        - Key: Project
+          Value: ADPA
+
+  # VPC Endpoints for AWS services
+  S3VPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref ADPAVPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
+      RouteTableIds:
+        - !Ref PrivateRouteTable
+      VpcEndpointType: Gateway
+
+  DynamoDBVPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref ADPAVPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.dynamodb'
+      RouteTableIds:
+        - !Ref PrivateRouteTable
+      VpcEndpointType: Gateway
+
+  # Route Table
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref ADPAVPC
+      Tags:
+        - Key: Name
+          Value: adpa-private-rt
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  # WAF Web ACL for API Gateway
+  ADPAWebACL:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: adpa-api-waf
+      Scope: REGIONAL
+      DefaultAction:
+        Allow: {}
+      Rules:
+        # Rate limiting rule
+        - Name: RateLimitRule
+          Priority: 1
+          Statement:
+            RateBasedStatement:
+              Limit: 2000
+              AggregateKeyType: IP
+          Action:
+            Block: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: RateLimitRule
+        
+        # Block common attacks
+        - Name: AWSManagedRulesCommonRuleSet
+          Priority: 2
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+          OverrideAction:
+            None: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedRulesCommonRuleSet
+        
+        # Block known bad inputs
+        - Name: AWSManagedRulesKnownBadInputsRuleSet
+          Priority: 3
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesKnownBadInputsRuleSet
+          OverrideAction:
+            None: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedRulesKnownBadInputsRuleSet
+        
+        # SQL injection protection
+        - Name: AWSManagedRulesSQLiRuleSet
+          Priority: 4
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesSQLiRuleSet
+          OverrideAction:
+            None: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedRulesSQLiRuleSet
+      
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: ADPAWebACL
+      Tags:
+        - Key: Project
+          Value: ADPA
+
+  # GuardDuty (threat detection) - enabled at account level
+  # Note: GuardDuty is enabled via AWS Console or CLI, not CloudFormation
+
+  # S3 Bucket Policy for encryption
+  S3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: adpa-data-083308938449-development
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyUnencryptedObjectUploads
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:PutObject'
+            Resource: !Sub 'arn:aws:s3:::adpa-data-083308938449-development/*'
+            Condition:
+              StringNotEquals:
+                's3:x-amz-server-side-encryption': 'aws:kms'
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !Sub 'arn:aws:s3:::adpa-data-083308938449-development'
+              - !Sub 'arn:aws:s3:::adpa-data-083308938449-development/*'
+            Condition:
+              Bool:
+                'aws:SecureTransport': 'false'
+
+  # CloudTrail for audit logging
+  ADPACloudTrail:
+    Type: AWS::CloudTrail::Trail
+    Properties:
+      TrailName: adpa-audit-trail
+      S3BucketName: !Ref CloudTrailBucket
+      IncludeGlobalServiceEvents: true
+      IsLogging: true
+      IsMultiRegionTrail: true
+      EnableLogFileValidation: true
+      EventSelectors:
+        - ReadWriteType: All
+          IncludeManagementEvents: true
+          DataResources:
+            - Type: 'AWS::S3::Object'
+              Values:
+                - !Sub 'arn:aws:s3:::adpa-data-083308938449-development/*'
+                - !Sub 'arn:aws:s3:::adpa-models-083308938449-development/*'
+            - Type: 'AWS::Lambda::Function'
+              Values:
+                - !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function/adpa-*'
+      Tags:
+        - Key: Project
+          Value: ADPA
+
+  CloudTrailBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'adpa-cloudtrail-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+
+  CloudTrailBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CloudTrailBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AWSCloudTrailAclCheck
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: 's3:GetBucketAcl'
+            Resource: !GetAtt CloudTrailBucket.Arn
+          - Sid: AWSCloudTrailWrite
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: 's3:PutObject'
+            Resource: !Sub '${CloudTrailBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                's3:x-amz-acl': 'bucket-owner-full-control'
+
+Outputs:
+  KMSKeyId:
+    Description: KMS Key ID for encryption
+    Value: !Ref ADPAS3EncryptionKey
+    Export:
+      Name: adpa-kms-key-id
+
+  KMSKeyArn:
+    Description: KMS Key ARN
+    Value: !GetAtt ADPAS3EncryptionKey.Arn
+    Export:
+      Name: adpa-kms-key-arn
+
+  SecretsManagerArn:
+    Description: Secrets Manager ARN
+    Value: !Ref ADPAAPISecrets
+    Export:
+      Name: adpa-secrets-arn
+
+  VPCId:
+    Description: VPC ID
+    Value: !Ref ADPAVPC
+    Export:
+      Name: adpa-vpc-id
+
+  PrivateSubnetIds:
+    Description: Private Subnet IDs
+    Value: !Join [',', [!Ref PrivateSubnet1, !Ref PrivateSubnet2]]
+    Export:
+      Name: adpa-private-subnets
+
+  LambdaSecurityGroupId:
+    Description: Lambda Security Group ID
+    Value: !Ref LambdaSecurityGroup
+    Export:
+      Name: adpa-lambda-sg
+
+  WebACLArn:
+    Description: WAF Web ACL ARN
+    Value: !GetAtt ADPAWebACL.Arn
+    Export:
+      Name: adpa-waf-arn
+
+  CloudTrailArn:
+    Description: CloudTrail ARN
+    Value: !GetAtt ADPACloudTrail.Arn
+    Export:
+      Name: adpa-cloudtrail-arn

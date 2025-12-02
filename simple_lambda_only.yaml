@@ -1,0 +1,116 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Super Simple ADPA Lambda Functions Only'
+
+Resources:
+  # IAM Role for Lambda execution
+  ADPALambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AmazonBedrockFullAccess
+        - arn:aws:iam::aws:policy/CloudWatchFullAccess
+
+  # Main Data Processing Lambda
+  ADPADataProcessor:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: adpa-data-processor-development
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Code:
+        ZipFile: |
+          import json
+          import logging
+          
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          def lambda_handler(event, context):
+              logger.info(f"Processing event: {event}")
+              
+              action = event.get('action', 'health_check')
+              
+              if action == 'health_check':
+                  return {
+                      'status': 'healthy',
+                      'message': 'ADPA Lambda function is operational',
+                      'components': {
+                          'imports': False,
+                          'agent': False,
+                          'monitoring': False
+                      },
+                      'aws_config': {
+                          'region': 'us-east-2',
+                          'data_bucket': 'adpa-data-083308938449-development'
+                      }
+                  }
+              
+              return {
+                  'status': 'placeholder',
+                  'message': 'ADPA code will be deployed here',
+                  'action': action
+              }
+      Role: !GetAtt ADPALambdaExecutionRole.Arn
+      Timeout: 900
+      MemorySize: 1024
+      Environment:
+        Variables:
+          ENVIRONMENT: development
+          AWS_REGION: us-east-2
+
+  # Error Handler Lambda
+  ADPAErrorHandler:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: adpa-error-handler-development
+      Runtime: python3.11
+      Handler: error_handler.lambda_handler
+      Code:
+        ZipFile: |
+          import json
+          import logging
+          
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          def lambda_handler(event, context):
+              logger.error(f"Pipeline error occurred: {event}")
+              
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps({
+                      'status': 'analyzed',
+                      'message': 'Error handler operational',
+                      'recovery_recommended': True,
+                      'next_steps': ['investigate_logs', 'retry_operation']
+                  })
+              }
+      Role: !GetAtt ADPALambdaExecutionRole.Arn
+      Timeout: 300
+      MemorySize: 512
+      Environment:
+        Variables:
+          ENVIRONMENT: development
+          AWS_REGION: us-east-2
+
+Outputs:
+  LambdaFunctionName:
+    Description: Name of the main Lambda function
+    Value: !Ref ADPADataProcessor
+
+  ErrorHandlerName:
+    Description: Name of the error handler function
+    Value: !Ref ADPAErrorHandler
+
+  LambdaRoleArn:
+    Description: ARN of the Lambda execution role
+    Value: !GetAtt ADPALambdaExecutionRole.Arn

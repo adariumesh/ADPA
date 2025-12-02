@@ -1,0 +1,491 @@
+openapi: 3.0.0
+info:
+  title: ADPA ML Pipeline API
+  description: RESTful API for managing ADPA autonomous data pipeline and ML workflows
+  version: 1.0.0
+  contact:
+    name: ADPA Team
+    email: umeshka@umd.edu
+
+servers:
+  - url: https://api.adpa.example.com/v1
+    description: Production API
+  - url: https://dev-api.adpa.example.com/v1
+    description: Development API
+
+paths:
+  /health:
+    get:
+      summary: Health check endpoint
+      description: Verify API and Lambda function health
+      operationId: healthCheck
+      tags:
+        - System
+      responses:
+        '200':
+          description: System is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-data-processor-development/invocations
+        passthroughBehavior: when_no_match
+
+  /pipelines:
+    post:
+      summary: Create new ML pipeline
+      description: Start a new machine learning pipeline execution
+      operationId: createPipeline
+      tags:
+        - Pipelines
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePipelineRequest'
+            examples:
+              classification:
+                summary: Classification pipeline
+                value:
+                  objective: "Build a classification model to predict customer churn"
+                  dataset_path: "s3://adpa-data-083308938449-development/customer_data.csv"
+                  config:
+                    max_execution_time: 600
+                    optimization_metric: "accuracy"
+              regression:
+                summary: Regression pipeline
+                value:
+                  objective: "Predict sales revenue based on marketing spend"
+                  dataset_path: "s3://adpa-data-083308938449-development/sales_data.csv"
+                  config:
+                    optimization_metric: "r2_score"
+      responses:
+        '201':
+          description: Pipeline created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+        '429':
+          description: Rate limit exceeded
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-api-handler/invocations
+
+    get:
+      summary: List pipelines
+      description: Get a list of recent pipeline executions
+      operationId: listPipelines
+      tags:
+        - Pipelines
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: status
+          in: query
+          description: Filter by pipeline status
+          schema:
+            type: string
+            enum: [running, completed, failed, all]
+        - name: limit
+          in: query
+          description: Maximum number of results
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+      responses:
+        '200':
+          description: List of pipelines
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pipelines:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PipelineSummary'
+                  count:
+                    type: integer
+        '401':
+          description: Unauthorized
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-api-handler/invocations
+
+  /pipelines/{pipeline_id}:
+    get:
+      summary: Get pipeline status
+      description: Retrieve detailed status and metrics for a specific pipeline
+      operationId: getPipeline
+      tags:
+        - Pipelines
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: pipeline_id
+          in: path
+          required: true
+          description: Unique pipeline identifier
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Pipeline details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineDetail'
+        '404':
+          description: Pipeline not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-api-handler/invocations
+
+  /pipelines/{pipeline_id}/cancel:
+    post:
+      summary: Cancel pipeline execution
+      description: Stop a running pipeline
+      operationId: cancelPipeline
+      tags:
+        - Pipelines
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: pipeline_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  example: "User requested cancellation"
+      responses:
+        '200':
+          description: Pipeline cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "cancelled"
+                  pipeline_id:
+                    type: string
+        '404':
+          description: Pipeline not found
+        '409':
+          description: Pipeline already completed
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-api-handler/invocations
+
+  /pipelines/{pipeline_id}/logs:
+    get:
+      summary: Get pipeline execution logs
+      description: Retrieve CloudWatch logs for pipeline execution
+      operationId: getPipelineLogs
+      tags:
+        - Pipelines
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: pipeline_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of log entries
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: Pipeline logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LogEntry'
+        '404':
+          description: Pipeline not found
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-api-handler/invocations
+
+  /models:
+    get:
+      summary: List trained models
+      description: Get all trained models from model registry
+      operationId: listModels
+      tags:
+        - Models
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: List of models
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  models:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ModelSummary'
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-api-handler/invocations
+
+  /models/{model_id}/predict:
+    post:
+      summary: Make predictions
+      description: Use a trained model for inference
+      operationId: predict
+      tags:
+        - Models
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: model_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        '200':
+          description: Predictions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  predictions:
+                    type: array
+                    items:
+                      type: number
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-api-handler/invocations
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      x-amazon-apigateway-authtype: custom
+
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        components:
+          type: object
+          properties:
+            imports:
+              type: boolean
+            monitoring:
+              type: boolean
+            kpi_tracker:
+              type: boolean
+            agent:
+              type: boolean
+        timestamp:
+          type: string
+          format: date-time
+
+    CreatePipelineRequest:
+      type: object
+      required:
+        - objective
+        - dataset_path
+      properties:
+        objective:
+          type: string
+          description: Natural language description of ML objective
+          example: "Predict customer churn using historical data"
+        dataset_path:
+          type: string
+          description: S3 path to dataset
+          example: "s3://adpa-data-083308938449-development/customer_data.csv"
+        config:
+          type: object
+          properties:
+            max_execution_time:
+              type: integer
+              description: Maximum execution time in seconds
+              default: 600
+            optimization_metric:
+              type: string
+              enum: [accuracy, precision, recall, f1, roc_auc, r2_score]
+              default: "accuracy"
+
+    PipelineResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [started, running, completed, failed]
+        pipeline_id:
+          type: string
+        execution_arn:
+          type: string
+        start_time:
+          type: string
+          format: date-time
+
+    PipelineSummary:
+      type: object
+      properties:
+        pipeline_id:
+          type: string
+        objective:
+          type: string
+        status:
+          type: string
+        start_time:
+          type: string
+          format: date-time
+        duration_seconds:
+          type: number
+
+    PipelineDetail:
+      type: object
+      properties:
+        pipeline_id:
+          type: string
+        status:
+          type: string
+        current_state:
+          type: string
+        objective:
+          type: string
+        dataset_path:
+          type: string
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        execution_time_seconds:
+          type: number
+        performance_metrics:
+          type: object
+        model_performance:
+          type: object
+
+    LogEntry:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        message:
+          type: string
+        level:
+          type: string
+          enum: [INFO, WARNING, ERROR, DEBUG]
+
+    ModelSummary:
+      type: object
+      properties:
+        model_id:
+          type: string
+        algorithm:
+          type: string
+        accuracy:
+          type: number
+        created_at:
+          type: string
+          format: date-time
+        s3_location:
+          type: string
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+x-amazon-apigateway-request-validators:
+  all:
+    validateRequestBody: true
+    validateRequestParameters: true
+
+x-amazon-apigateway-gateway-responses:
+  DEFAULT_4XX:
+    responseParameters:
+      gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+  DEFAULT_5XX:
+    responseParameters:
+      gatewayresponse.header.Access-Control-Allow-Origin: "'*'"

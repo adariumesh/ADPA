@@ -11,6 +11,23 @@ import traceback
 from datetime import datetime
 from typing import Dict, Any, Optional
 
+# AWS X-Ray tracing for distributed tracing
+try:
+    from aws_xray_sdk.core import xray_recorder
+    from aws_xray_sdk.core import patch_all
+    # Patch all supported libraries (boto3, requests, etc.)
+    patch_all()
+    XRAY_ENABLED = True
+except ImportError:
+    XRAY_ENABLED = False
+    # Create dummy decorator if X-Ray not available
+    class xray_recorder:
+        @staticmethod
+        def capture(name):
+            def decorator(func):
+                return func
+            return decorator
+
 # Add src to path for imports
 sys.path.append('/opt/python')
 sys.path.append('./src')
@@ -83,6 +100,7 @@ class ADPALambdaOrchestrator:
         else:
             logger.error(f"Failed to import ADPA components: {IMPORT_ERROR}")
     
+    @xray_recorder.capture('run_pipeline')
     def run_pipeline(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """Execute complete ADPA pipeline using Adariprasad's implementation"""
         
@@ -190,7 +208,7 @@ class ADPALambdaOrchestrator:
                 'error': str(e),
                 'timestamp': datetime.utcnow().isoformat()
             }
-    
+    @xray_recorder.capture('health_check')
     def health_check(self) -> Dict[str, Any]:
         """Health check for the ADPA system"""
         
@@ -200,7 +218,8 @@ class ADPALambdaOrchestrator:
                 'imports': IMPORTS_SUCCESS,
                 'monitoring': self.monitoring is not None,
                 'kpi_tracker': self.kpi_tracker is not None,
-                'agent': self.agent is not None
+                'agent': self.agent is not None,
+                'xray_tracing': XRAY_ENABLED
             },
             'aws_config': {
                 'data_bucket': AWS_CONFIG['data_bucket'],
@@ -214,12 +233,14 @@ class ADPALambdaOrchestrator:
             health_status['import_error'] = IMPORT_ERROR
             
         return health_status
-    
+    @xray_recorder.capture('publish_metrics')
     def _publish_metrics(self, result: Dict[str, Any]):
         """Publish metrics to Girik's CloudWatch infrastructure"""
         
         if not self.monitoring:
             return
+        
+        try:return
         
         try:
             # Publish pipeline success metric

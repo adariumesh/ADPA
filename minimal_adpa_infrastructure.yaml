@@ -1,0 +1,220 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Minimal ADPA Infrastructure for Testing'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: development
+  
+  AccountId:
+    Type: String
+    Default: '083308938449'
+
+Resources:
+  # S3 Buckets for data and models
+  ADPADataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'adpa-data-${AccountId}-${Environment}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'adpa-data-bucket-${Environment}'
+
+  ADPAModelBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'adpa-models-${AccountId}-${Environment}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Name
+          Value: !Sub 'adpa-model-bucket-${Environment}'
+
+  # IAM Role for Lambda execution
+  ADPALambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'adpa-lambda-execution-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ADPALambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:PutObject'
+                  - 's3:DeleteObject'
+                  - 's3:ListBucket'
+                Resource: 
+                  - !Sub '${ADPADataBucket}/*'
+                  - !Sub '${ADPAModelBucket}/*'
+                  - !GetAtt ADPADataBucket.Arn
+                  - !GetAtt ADPAModelBucket.Arn
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+              - Effect: Allow
+                Action:
+                  - 'bedrock:InvokeModel'
+                  - 'bedrock:InvokeModelWithResponseStream'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'cloudwatch:PutMetricData'
+                  - 'cloudwatch:CreateLogGroup'
+                  - 'cloudwatch:CreateLogStream'
+                Resource: '*'
+
+  # Main Data Processing Lambda
+  ADPADataProcessor:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'adpa-data-processor-${Environment}'
+      Runtime: python3.11
+      Handler: lambda_function.lambda_handler
+      Code:
+        ZipFile: |
+          import json
+          import logging
+          
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          def lambda_handler(event, context):
+              logger.info(f"Processing event: {event}")
+              
+              action = event.get('action', 'health_check')
+              
+              if action == 'health_check':
+                  return {
+                      'status': 'healthy',
+                      'message': 'ADPA Lambda function is operational',
+                      'components': {
+                          'imports': False,
+                          'agent': False,
+                          'monitoring': False
+                      },
+                      'aws_config': {
+                          'region': 'us-east-2',
+                          'data_bucket': 'adpa-data-083308938449-development'
+                      }
+                  }
+              
+              return {
+                  'status': 'placeholder',
+                  'message': 'ADPA code will be deployed here',
+                  'action': action
+              }
+      Role: !GetAtt ADPALambdaExecutionRole.Arn
+      Timeout: 900
+      MemorySize: 1024
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          DATA_BUCKET: !Ref ADPADataBucket
+          MODEL_BUCKET: !Ref ADPAModelBucket
+      Tags:
+        - Key: Name
+          Value: !Sub 'adpa-data-processor-${Environment}'
+
+  # Error Handler Lambda
+  ADPAErrorHandler:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'adpa-error-handler-${Environment}'
+      Runtime: python3.11
+      Handler: error_handler.lambda_handler
+      Code:
+        ZipFile: |
+          import json
+          import logging
+          
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          def lambda_handler(event, context):
+              logger.error(f"Pipeline error occurred: {event}")
+              
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps({
+                      'status': 'analyzed',
+                      'message': 'Error handler operational',
+                      'recovery_recommended': True,
+                      'next_steps': ['investigate_logs', 'retry_operation']
+                  })
+              }
+      Role: !GetAtt ADPALambdaExecutionRole.Arn
+      Timeout: 300
+      MemorySize: 512
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+      Tags:
+        - Key: Name
+          Value: !Sub 'adpa-error-handler-${Environment}'
+
+  # CloudWatch Log Groups
+  ADPAMainLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/adpa-data-processor-${Environment}'
+      RetentionInDays: 30
+
+  ADPAErrorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/adpa-error-handler-${Environment}'
+      RetentionInDays: 30
+
+Outputs:
+  DataBucketName:
+    Description: Name of the data bucket
+    Value: !Ref ADPADataBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-DataBucket'
+
+  ModelBucketName:
+    Description: Name of the model bucket
+    Value: !Ref ADPAModelBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-ModelBucket'
+
+  LambdaFunctionName:
+    Description: Name of the main Lambda function
+    Value: !Ref ADPADataProcessor
+    Export:
+      Name: !Sub '${AWS::StackName}-LambdaFunction'
+
+  ErrorHandlerName:
+    Description: Name of the error handler function
+    Value: !Ref ADPAErrorHandler
+    Export:
+      Name: !Sub '${AWS::StackName}-ErrorHandler'
+
+  LambdaRoleArn:
+    Description: ARN of the Lambda execution role
+    Value: !GetAtt ADPALambdaExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-LambdaRole'

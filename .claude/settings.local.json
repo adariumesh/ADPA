@@ -10,7 +10,11 @@
       "Bash(PYTHONPATH=/Users/adariprasad/weapon/UMD/DATA650/Group Presentation/adpa python -c \"from src.pipeline.etl.feature_engineer import FeatureEngineeringStep; print(''✅ Feature Engineering imports successfully'')\")",
       "Bash(PYTHONPATH=/Users/adariprasad/weapon/UMD/DATA650/Group Presentation/adpa python -c \"from src.pipeline.evaluation.evaluator import ModelEvaluationStep; print(''✅ Model Evaluation imports successfully'')\")",
       "Bash(find:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(git add:*)",
+      "Bash(git push:*)",
+      "Bash(git reset:*)",
+      "Bash(rm:*)"
     ],
     "deny": []
   }
