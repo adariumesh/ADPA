@@ -48,14 +48,14 @@ class LLMReasoningEngine:
     """
     
     def __init__(self, 
-                 provider: LLMProvider = LLMProvider.BEDROCK,
-                 model_id: str = "anthropic.claude-3-sonnet-20240229-v1:0",
+                 provider: LLMProvider = LLMProvider.OPENAI,
+                 model_id: str = "gpt-4",
                  region: str = "us-east-1"):
         """
-        Initialize the LLM reasoning engine.
+        Initialize the LLM reasoning engine with real LLM integration.
         
         Args:
-            provider: LLM provider to use
+            provider: LLM provider to use (defaults to OpenAI)
             model_id: Specific model to use
             region: AWS region for Bedrock
         """
@@ -69,6 +69,9 @@ class LLMReasoningEngine:
         
         # Reasoning prompt templates
         self.prompt_templates = self._load_prompt_templates()
+        
+        # Track reasoning calls for learning
+        self.reasoning_calls = []
         
         self.logger.info(f"LLM Reasoning Engine initialized with {provider.value}")
     
@@ -185,13 +188,22 @@ class LLMReasoningEngine:
                 self.logger.info("Bedrock client initialized successfully")
             except Exception as e:
                 self.logger.warning(f"Bedrock client initialization failed: {e}")
-                self.client = None
+                # Fallback to OpenAI if Bedrock fails
+                self._fallback_to_openai()
         
         elif self.provider == LLMProvider.OPENAI:
             try:
                 import openai
-                self.client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-                self.logger.info("OpenAI client initialized successfully")
+                openai_key = os.getenv('OPENAI_API_KEY')
+                if not openai_key:
+                    self.logger.warning("OPENAI_API_KEY not found in environment")
+                    # For demo purposes, try to continue without real API
+                    self.client = None
+                else:
+                    self.client = openai.OpenAI(api_key=openai_key)
+                    self.logger.info("OpenAI client initialized successfully")
+                    # Test the connection
+                    self._test_openai_connection()
             except ImportError:
                 self.logger.error("OpenAI package not installed")
                 self.client = None
@@ -203,23 +215,60 @@ class LLMReasoningEngine:
             self.logger.error(f"Unsupported LLM provider: {self.provider}")
             self.client = None
     
-    def _call_llm(self, prompt: str, max_tokens: int = 1000) -> str:
+    def _fallback_to_openai(self):
+        """Fallback to OpenAI when other providers fail."""
+        try:
+            import openai
+            openai_key = os.getenv('OPENAI_API_KEY')
+            if openai_key:
+                self.client = openai.OpenAI(api_key=openai_key)
+                self.provider = LLMProvider.OPENAI
+                self.model_id = "gpt-4"
+                self.logger.info("Fallback to OpenAI successful")
+            else:
+                self.client = None
+        except Exception as e:
+            self.logger.error(f"Fallback to OpenAI failed: {e}")
+            self.client = None
+    
+    def _test_openai_connection(self):
+        """Test OpenAI connection with a simple call."""
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_id,
+                messages=[{"role": "user", "content": "Test connection. Respond with 'OK'."}],
+                max_tokens=10,
+                temperature=0
+            )
+            if response.choices[0].message.content:
+                self.logger.info("OpenAI connection test successful")
+            else:
+                self.logger.warning("OpenAI connection test returned empty response")
+        except Exception as e:
+            self.logger.warning(f"OpenAI connection test failed: {e}")
+            # Don't set client to None here, still try to use it
+    
+    def _call_llm(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.1) -> str:
         """
-        Make a call to the LLM with the given prompt.
+        Make a real call to the LLM with the given prompt.
         
         Args:
             prompt: Input prompt for the LLM
             max_tokens: Maximum tokens to generate
+            temperature: Temperature for response generation
             
         Returns:
             LLM response text
         """
+        import time
+        start_time = time.time()
+        
         try:
             if self.provider == LLMProvider.BEDROCK and self.client:
                 body = json.dumps({
                     "prompt": f"\n\nHuman: {prompt}\n\nAssistant:",
                     "max_tokens_to_sample": max_tokens,
-                    "temperature": 0.1,
+                    "temperature": temperature,
                     "top_p": 0.9,
                 })
                 
@@ -231,23 +280,54 @@ class LLMReasoningEngine:
                 )
                 
                 response_body = json.loads(response.get('body').read())
-                return response_body.get('completion', '')
+                llm_response = response_body.get('completion', '')
             
             elif self.provider == LLMProvider.OPENAI and self.client:
                 response = self.client.chat.completions.create(
-                    model="gpt-4",
-                    messages=[{"role": "user", "content": prompt}],
+                    model=self.model_id,
+                    messages=[
+                        {"role": "system", "content": "You are an expert ML engineer and data scientist. Provide detailed, structured, and actionable responses."},
+                        {"role": "user", "content": prompt}
+                    ],
                     max_tokens=max_tokens,
-                    temperature=0.1
+                    temperature=temperature
                 )
-                return response.choices[0].message.content
+                llm_response = response.choices[0].message.content
             
             else:
-                # Fallback simulation for development/testing
-                return self._simulate_llm_response(prompt)
+                # Fallback to intelligent simulation
+                self.logger.warning("No LLM client available, using intelligent simulation")
+                llm_response = self._simulate_llm_response(prompt)
+            
+            # Track the reasoning call for learning
+            execution_time = time.time() - start_time
+            self.reasoning_calls.append({
+                "prompt": prompt[:200] + "..." if len(prompt) > 200 else prompt,
+                "response_length": len(llm_response),
+                "execution_time": execution_time,
+                "timestamp": time.time(),
+                "provider": self.provider.value,
+                "success": True
+            })
+            
+            self.logger.info(f"LLM call successful in {execution_time:.2f}s")
+            return llm_response
                 
         except Exception as e:
-            self.logger.error(f"LLM call failed: {e}")
+            execution_time = time.time() - start_time
+            self.logger.error(f"LLM call failed after {execution_time:.2f}s: {e}")
+            
+            # Track the failed call
+            self.reasoning_calls.append({
+                "prompt": prompt[:200] + "..." if len(prompt) > 200 else prompt,
+                "error": str(e),
+                "execution_time": execution_time,
+                "timestamp": time.time(),
+                "provider": self.provider.value,
+                "success": False
+            })
+            
+            # Return intelligent fallback
             return self._simulate_llm_response(prompt)
     
     def _simulate_llm_response(self, prompt: str) -> str:

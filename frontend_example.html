@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADPA Pipeline Frontend Example</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .result {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 15px;
+            white-space: pre-wrap;
+        }
+        .success {
+            border-color: #28a745;
+            background-color: #d4edda;
+        }
+        .error {
+            border-color: #dc3545;
+            background-color: #f8d7da;
+        }
+        .pipeline-item {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: #f8f9fa;
+        }
+        .status-running { background-color: #fff3cd; }
+        .status-completed { background-color: #d4edda; }
+        .status-failed { background-color: #f8d7da; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ADPA Pipeline Management</h1>
+        <p>This example demonstrates how to interact with the CORS-enabled ADPA Lambda API from a frontend application.</p>
+        
+        <!-- Configuration -->
+        <div class="form-group">
+            <label for="apiUrl">API Gateway URL:</label>
+            <input type="text" id="apiUrl" value="https://your-api-gateway-url.amazonaws.com/dev" placeholder="https://your-api-gateway-url.amazonaws.com/dev">
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Health Check</h2>
+        <button onclick="checkHealth()">Check Health</button>
+        <div id="healthResult" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>Create Pipeline</h2>
+        <div class="form-group">
+            <label for="datasetPath">Dataset Path:</label>
+            <input type="text" id="datasetPath" value="s3://example-bucket/data.csv" placeholder="S3 path to your dataset">
+        </div>
+        <div class="form-group">
+            <label for="objective">Objective:</label>
+            <select id="objective">
+                <option value="classification">Classification</option>
+                <option value="regression">Regression</option>
+                <option value="clustering">Clustering</option>
+                <option value="anomaly_detection">Anomaly Detection</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="config">Configuration (JSON):</label>
+            <textarea id="config" rows="3" placeholder='{"test_mode": true, "max_iterations": 100}'>{}</textarea>
+        </div>
+        <button onclick="createPipeline()">Create Pipeline</button>
+        <div id="createResult" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="container">
+        <h2>Pipeline List</h2>
+        <button onclick="listPipelines()">Refresh Pipeline List</button>
+        <div id="pipelineList"></div>
+    </div>
+
+    <div class="container">
+        <h2>Get Pipeline Status</h2>
+        <div class="form-group">
+            <label for="pipelineId">Pipeline ID:</label>
+            <input type="text" id="pipelineId" placeholder="Enter pipeline ID">
+        </div>
+        <button onclick="getPipelineStatus()">Get Status</button>
+        <div id="statusResult" class="result" style="display: none;"></div>
+    </div>
+
+    <script>
+        // Utility function to make API calls with CORS
+        async function apiCall(endpoint, method = 'GET', body = null) {
+            const apiUrl = document.getElementById('apiUrl').value.trim();
+            if (!apiUrl) {
+                throw new Error('Please enter API Gateway URL');
+            }
+
+            const url = `${apiUrl}${endpoint}`;
+            const options = {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            };
+
+            if (body) {
+                options.body = JSON.stringify(body);
+            }
+
+            console.log(`Making ${method} request to: ${url}`);
+            
+            try {
+                const response = await fetch(url, options);
+                const data = await response.json();
+                
+                return {
+                    success: response.ok,
+                    status: response.status,
+                    data: data
+                };
+            } catch (error) {
+                console.error('API call failed:', error);
+                return {
+                    success: false,
+                    error: error.message
+                };
+            }
+        }
+
+        // Display result in a result div
+        function displayResult(elementId, result) {
+            const element = document.getElementById(elementId);
+            element.style.display = 'block';
+            
+            if (result.success) {
+                element.className = 'result success';
+                element.textContent = JSON.stringify(result.data, null, 2);
+            } else {
+                element.className = 'result error';
+                element.textContent = `Error: ${result.error || result.data?.error || 'Unknown error'}`;
+            }
+        }
+
+        // Health check
+        async function checkHealth() {
+            const result = await apiCall('/health');
+            displayResult('healthResult', result);
+        }
+
+        // Create pipeline
+        async function createPipeline() {
+            try {
+                const config = JSON.parse(document.getElementById('config').value || '{}');
+                
+                const body = {
+                    dataset_path: document.getElementById('datasetPath').value,
+                    objective: document.getElementById('objective').value,
+                    config: config
+                };
+
+                const result = await apiCall('/pipelines', 'POST', body);
+                displayResult('createResult', result);
+                
+                // Auto-refresh pipeline list if successful
+                if (result.success) {
+                    setTimeout(listPipelines, 1000);
+                }
+            } catch (error) {
+                displayResult('createResult', { success: false, error: error.message });
+            }
+        }
+
+        // List pipelines
+        async function listPipelines() {
+            const result = await apiCall('/pipelines');
+            
+            const listDiv = document.getElementById('pipelineList');
+            
+            if (result.success && result.data.pipelines) {
+                const pipelines = result.data.pipelines;
+                
+                if (pipelines.length === 0) {
+                    listDiv.innerHTML = '<p>No pipelines found.</p>';
+                } else {
+                    let html = `<h3>Found ${pipelines.length} pipeline(s):</h3>`;
+                    
+                    pipelines.forEach(pipeline => {
+                        const statusClass = `status-${pipeline.status}`;
+                        html += `
+                            <div class="pipeline-item ${statusClass}">
+                                <strong>ID:</strong> ${pipeline.id}<br>
+                                <strong>Status:</strong> ${pipeline.status}<br>
+                                <strong>Objective:</strong> ${pipeline.objective}<br>
+                                <strong>Dataset:</strong> ${pipeline.dataset_path}<br>
+                                <strong>Created:</strong> ${new Date(pipeline.created_at).toLocaleString()}<br>
+                                ${pipeline.completed_at ? `<strong>Completed:</strong> ${new Date(pipeline.completed_at).toLocaleString()}<br>` : ''}
+                                ${pipeline.error ? `<strong>Error:</strong> ${pipeline.error}<br>` : ''}
+                                <button onclick="document.getElementById('pipelineId').value='${pipeline.id}'; getPipelineStatus();">Get Details</button>
+                            </div>
+                        `;
+                    });
+                    
+                    listDiv.innerHTML = html;
+                }
+            } else {
+                listDiv.innerHTML = `<div class="result error">Failed to load pipelines: ${result.error || 'Unknown error'}</div>`;
+            }
+        }
+
+        // Get pipeline status
+        async function getPipelineStatus() {
+            const pipelineId = document.getElementById('pipelineId').value.trim();
+            if (!pipelineId) {
+                displayResult('statusResult', { success: false, error: 'Please enter a pipeline ID' });
+                return;
+            }
+
+            const result = await apiCall(`/pipelines/${pipelineId}`);
+            displayResult('statusResult', result);
+        }
+
+        // Initialize with health check
+        window.onload = function() {
+            // Auto-load pipeline list
+            listPipelines();
+        };
+    </script>
+</body>
+</html>

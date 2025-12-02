@@ -8,13 +8,36 @@ info:
     email: umeshka@umd.edu
 
 servers:
-  - url: https://api.adpa.example.com/v1
-    description: Production API
-  - url: https://dev-api.adpa.example.com/v1
-    description: Development API
+  - url: https://lvojiw3qc9.execute-api.us-east-2.amazonaws.com/v1
+    description: AWS API Gateway endpoint
 
 paths:
   /health:
+    options:
+      summary: CORS preflight for health endpoint
+      description: Handle CORS preflight requests
+      responses:
+        '200':
+          description: CORS preflight response
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+      x-amazon-apigateway-integration:
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode": 200}'
+        responses:
+          default:
+            statusCode: "200"
+            responseTemplates:
+              application/json: '{}'
     get:
       summary: Health check endpoint
       description: Verify API and Lambda function health
@@ -24,6 +47,16 @@ paths:
       responses:
         '200':
           description: System is healthy
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -39,6 +72,9 @@ paths:
         httpMethod: POST
         uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-data-processor-development/invocations
         passthroughBehavior: when_no_match
+        responses:
+          default:
+            statusCode: "200"
 
   /pipelines:
     post:
@@ -47,8 +83,6 @@ paths:
       operationId: createPipeline
       tags:
         - Pipelines
-      security:
-        - ApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -91,7 +125,11 @@ paths:
       x-amazon-apigateway-integration:
         type: aws_proxy
         httpMethod: POST
-        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-api-handler/invocations
+        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-data-processor-development/invocations
+        passthroughBehavior: when_no_match
+        responses:
+          default:
+            statusCode: "200"
 
     get:
       summary: List pipelines
@@ -99,8 +137,6 @@ paths:
       operationId: listPipelines
       tags:
         - Pipelines
-      security:
-        - ApiKeyAuth: []
       parameters:
         - name: status
           in: query
@@ -135,7 +171,11 @@ paths:
       x-amazon-apigateway-integration:
         type: aws_proxy
         httpMethod: POST
-        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-api-handler/invocations
+        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-data-processor-development/invocations
+        passthroughBehavior: when_no_match
+        responses:
+          default:
+            statusCode: "200"
 
   /pipelines/{pipeline_id}:
     get:
@@ -144,8 +184,6 @@ paths:
       operationId: getPipeline
       tags:
         - Pipelines
-      security:
-        - ApiKeyAuth: []
       parameters:
         - name: pipeline_id
           in: path
@@ -171,7 +209,11 @@ paths:
       x-amazon-apigateway-integration:
         type: aws_proxy
         httpMethod: POST
-        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-api-handler/invocations
+        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-data-processor-development/invocations
+        passthroughBehavior: when_no_match
+        responses:
+          default:
+            statusCode: "200"
 
   /pipelines/{pipeline_id}/cancel:
     post:
@@ -180,8 +222,6 @@ paths:
       operationId: cancelPipeline
       tags:
         - Pipelines
-      security:
-        - ApiKeyAuth: []
       parameters:
         - name: pipeline_id
           in: path
@@ -217,7 +257,11 @@ paths:
       x-amazon-apigateway-integration:
         type: aws_proxy
         httpMethod: POST
-        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-api-handler/invocations
+        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-data-processor-development/invocations
+        passthroughBehavior: when_no_match
+        responses:
+          default:
+            statusCode: "200"
 
   /pipelines/{pipeline_id}/logs:
     get:
@@ -226,8 +270,6 @@ paths:
       operationId: getPipelineLogs
       tags:
         - Pipelines
-      security:
-        - ApiKeyAuth: []
       parameters:
         - name: pipeline_id
           in: path
@@ -257,7 +299,11 @@ paths:
       x-amazon-apigateway-integration:
         type: aws_proxy
         httpMethod: POST
-        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-api-handler/invocations
+        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-data-processor-development/invocations
+        passthroughBehavior: when_no_match
+        responses:
+          default:
+            statusCode: "200"
 
   /models:
     get:
@@ -266,8 +312,6 @@ paths:
       operationId: listModels
       tags:
         - Models
-      security:
-        - ApiKeyAuth: []
       responses:
         '200':
           description: List of models
@@ -283,7 +327,11 @@ paths:
       x-amazon-apigateway-integration:
         type: aws_proxy
         httpMethod: POST
-        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-api-handler/invocations
+        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-data-processor-development/invocations
+        passthroughBehavior: when_no_match
+        responses:
+          default:
+            statusCode: "200"
 
   /models/{model_id}/predict:
     post:
@@ -292,8 +340,6 @@ paths:
       operationId: predict
       tags:
         - Models
-      security:
-        - ApiKeyAuth: []
       parameters:
         - name: model_id
           in: path
@@ -326,7 +372,11 @@ paths:
       x-amazon-apigateway-integration:
         type: aws_proxy
         httpMethod: POST
-        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-api-handler/invocations
+        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-data-processor-development/invocations
+        passthroughBehavior: when_no_match
+        responses:
+          default:
+            statusCode: "200"
 
 components:
   securitySchemes:
@@ -334,7 +384,6 @@ components:
       type: apiKey
       in: header
       name: X-API-Key
-      x-amazon-apigateway-authtype: custom
 
   schemas:
     HealthResponse:

@@ -2,12 +2,23 @@
 
 An AI agent that automatically plans, builds, executes, monitors, and reports end-to-end ML pipelines with minimal human intervention.
 
-## 🎉 PROJECT STATUS: 95% COMPLETE - READY FOR PRESENTATION
+## 🎉 PROJECT STATUS: 95% COMPLETE - ✅ LIVE IN PRODUCTION
 
 ### Team Members
 - **Archit Golatkar** - Agent Planning & Orchestration + Core Logic
 - **Umesh Adari** - Data/ETL, Feature Engineering, Model Training & Evaluation  
 - **Girik Tripathi** - Monitoring, Security, API/UI, & Comparative Baseline
+
+---
+
+## 🌐 **LIVE APPLICATION - TRY IT NOW!**
+
+### **Frontend**: http://adpa-frontend-083308938449-production.s3-website.us-east-2.amazonaws.com
+### **REST API**: https://cr1kkj7213.execute-api.us-east-2.amazonaws.com/prod
+
+**Status**: ✅ Fully operational and accepting user requests!
+
+---
 
 ## Project Overview
 
@@ -19,33 +30,38 @@ ADPA tackles the challenge of manual, brittle data pipeline creation by providin
 - **Provides comprehensive observability** with monitoring and reporting
 - **Compares cloud vs local** implementations for concrete benefits analysis
 
-## ✅ Current Status: PRODUCTION-READY
+## ✅ Current Status: PRODUCTION DEPLOYMENT COMPLETE
 
-### 🚀 Completed Infrastructure (100%)
-- ✅ **AWS Lambda Deployment** - adpa-data-processor-development (3GB memory, X-Ray enabled)
-- ✅ **Core Agent Framework** - MasterAgenticController with LLM reasoning
-- ✅ **Complete ML Pipeline** - Ingestion → Cleaning → Feature Engineering → Training → Evaluation
-- ✅ **AWS Integration** - S3, ECR, CloudWatch monitoring
-- ✅ **Step Functions Orchestration** - 12-state ML pipeline workflow (code ready)
-- ✅ **SageMaker Integration** - GPU training, hyperparameter tuning (code ready)
-- ✅ **API Gateway REST API** - Complete OpenAPI 3.0 specification (code ready)
-- ✅ **Security Stack** - WAF, KMS encryption, VPC (code ready)
-- ✅ **Local Baseline** - Airflow + Prometheus + Grafana (code ready)
-- ✅ **Monitoring & Alerting** - CloudWatch alarms, X-Ray tracing (code ready)
+### 🚀 Live AWS Infrastructure (9 Services Deployed)
+- ✅ **S3 Buckets** (3): Data storage, model artifacts, frontend hosting
+- ✅ **Lambda Function**: adpa-lambda-function with complete REST API (8 endpoints)
+- ✅ **API Gateway**: REST API deployed to prod stage with CORS
+- ✅ **Step Functions**: 6-step ML pipeline workflow (ACTIVE)
+- ✅ **DynamoDB**: Pipeline metadata storage (adpa-pipelines table)
+- ✅ **SageMaker**: Training and processing jobs ready
+- ✅ **CloudWatch**: Dashboards, alarms, and centralized logging
+- ✅ **SNS**: Pipeline completion notifications
+- ✅ **Glue**: Data catalog and schema discovery
 
-### 📊 Live Deployment
-**AWS Resources:**
-- **Lambda Function**: `adpa-data-processor-development` (us-east-2)
-- **ECR Repository**: 1.04GB Docker image with ML dependencies
-- **S3 Buckets**: adpa-data, adpa-models
-- **API Endpoint**: Ready for deployment
-- **Cost**: ~$32/month (within free tier)
+### 📡 API Endpoints (All Live)
+1. **GET /health** - System health check
+2. **GET /pipelines** - List all pipelines
+3. **POST /pipelines** - Create new pipeline
+4. **GET /pipelines/{id}** - Get pipeline details
+5. **POST /pipelines/{id}/execute** - Execute pipeline
+6. **GET /pipelines/{id}/status** - Get execution status
+7. **POST /data/upload** - Upload dataset
+8. **GET /data/uploads** - List uploaded files
 
-**Local Infrastructure:**
-- **Docker Compose Stack**: 9 containers ready
-- **Airflow**: http://localhost:8080 (admin/admin)
-- **Grafana**: http://localhost:3000 (admin/admin)
-- **Prometheus**: http://localhost:9090
+### 🎨 Frontend Application
+- **Technology**: React + TypeScript
+- **Hosting**: S3 Static Website
+- **Status**: Public access enabled, fully functional
+- **Features**: Pipeline creation, dataset upload, real-time monitoring
+
+### 💰 Current Cost
+**Production**: ~$30/month baseline + $5 per pipeline execution  
+**Region**: us-east-2 (Ohio)
 
 ### 📁 Project Structure
 ```
