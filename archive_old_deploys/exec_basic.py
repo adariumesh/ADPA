@@ -1,0 +1,1 @@
+exec(open("/Users/adariprasad/weapon/UMD/DATA650/Group Presentation/adpa/basic_check.py").read())

@@ -1,0 +1,43 @@
+{
+  "deployment_type": "aws_lambda",
+  "timestamp": "2025-12-01T00:00:00Z",
+  "function_name": "adpa-data-processor-development",
+  "region": "us-east-2",
+  "runtime": "python3.9",
+  "handler": "lambda_function.lambda_handler",
+  "timeout": 900,
+  "memory_size": 512,
+  "environment_variables": {
+    "DATA_BUCKET": "adpa-data-276983626136-development",
+    "MODEL_BUCKET": "adpa-models-276983626136-development",
+    "AWS_REGION": "us-east-2",
+    "ENVIRONMENT": "development"
+  },
+  "deployment_files": [
+    "src/",
+    "lambda_function.py",
+    "config/",
+    "requirements.txt"
+  ],
+  "dependencies": [
+    "boto3>=1.34.0",
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "scikit-learn>=1.3.0",
+    "pydantic>=2.0.0",
+    "requests>=2.31.0",
+    "python-json-logger>=2.0.7",
+    "pyyaml>=6.0.0",
+    "python-dotenv>=1.0.0"
+  ],
+  "shell_workaround": true,
+  "shell_issue_description": "Shell environment has persistent issues preventing direct execution of bash commands",
+  "deployment_status": "package_ready_manual_deploy_required",
+  "tags": {
+    "Project": "ADPA",
+    "Environment": "Development",
+    "Owner": "Adariprasad",
+    "Infrastructure": "Girik",
+    "DeploymentMethod": "Manual"
+  }
+}
