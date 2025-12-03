@@ -50,18 +50,21 @@ class LLMReasoningEngine:
     def __init__(self, 
                  provider: LLMProvider = LLMProvider.BEDROCK,
                  model_id: str = "us.anthropic.claude-3-5-sonnet-20240620-v1:0",
-                 region: str = "us-east-2"):
+                 region: str = "us-east-2",
+                 force_real_ai: bool = True):
         """
         Initialize the LLM reasoning engine with real LLM integration.
         
         Args:
-            provider: LLM provider to use (defaults to OpenAI)
+            provider: LLM provider to use (defaults to Bedrock)
             model_id: Specific model to use
             region: AWS region for Bedrock
+            force_real_ai: If True, fail hard without falling back to simulation
         """
         self.provider = provider
         self.model_id = model_id
         self.region = region
+        self.force_real_ai = force_real_ai or os.getenv('USE_REAL_LLM', 'false').lower() == 'true'
         self.logger = logging.getLogger(__name__)
         
         # Initialize provider client
@@ -73,7 +76,10 @@ class LLMReasoningEngine:
         # Track reasoning calls for learning
         self.reasoning_calls = []
         
-        self.logger.info(f"LLM Reasoning Engine initialized with {provider.value}")
+        if self.force_real_ai:
+            self.logger.info(f"🚀 REAL AI ENABLED - Using {provider.value} with model {model_id}")
+        else:
+            self.logger.info(f"LLM Reasoning Engine initialized with {provider.value}")
     
     def reason_about_pipeline_planning(self, context: ReasoningContext) -> ReasoningResponse:
         """
@@ -174,11 +180,22 @@ class LLMReasoningEngine:
         Returns:
             Structured understanding of the objective
         """
+        # Extract problem_type directly from context - don't wait for LLM
+        explicit_problem_type = context.get('problem_type') if context else None
+        
+        # DEBUG LOGGING
+        self.logger.info(f"🔍 LLM.understand_objective called:")
+        self.logger.info(f"   Context received: {context}")
+        self.logger.info(f"   Explicit problem_type: {explicit_problem_type}")
+            
         prompt = self._build_objective_understanding_prompt(objective, context)
         
         response = self._call_llm(prompt, max_tokens=800)
         
-        return self._parse_objective_understanding_response(response)
+        result = self._parse_objective_understanding_response(response, explicit_problem_type)
+        self.logger.info(f"   Final problem_type: {result['problem_type']}")
+        
+        return result
     
     def _init_provider_client(self):
         """Initialize the appropriate LLM provider client."""
@@ -300,6 +317,9 @@ class LLMReasoningEngine:
                 llm_response = response.choices[0].message.content
             
             else:
+                # Check if real AI is required
+                if self.force_real_ai:
+                    raise Exception("Real AI required (USE_REAL_LLM=true) but no LLM client available")
                 # Fallback to intelligent simulation
                 self.logger.warning("No LLM client available, using intelligent simulation")
                 llm_response = self._simulate_llm_response(prompt)
@@ -322,6 +342,10 @@ class LLMReasoningEngine:
             execution_time = time.time() - start_time
             self.logger.error(f"LLM call failed after {execution_time:.2f}s: {e}")
             
+            # Check if real AI is required (fail hard instead of fallback)
+            if self.force_real_ai:
+                raise Exception(f"Real AI required (USE_REAL_LLM=true) but call failed: {e}")
+            
             # Track the failed call
             self.reasoning_calls.append({
                 "prompt": prompt[:200] + "..." if len(prompt) > 200 else prompt,
@@ -332,7 +356,8 @@ class LLMReasoningEngine:
                 "success": False
             })
             
-            # Return intelligent fallback
+            # Return intelligent fallback only if not forced
+            self.logger.warning("Falling back to intelligent simulation after LLM failure")
             return self._simulate_llm_response(prompt)
     
     def _simulate_llm_response(self, prompt: str) -> str:
@@ -737,11 +762,23 @@ class LLMReasoningEngine:
     
     def _parse_objective_understanding_response(self, response: str) -> Dict[str, Any]:
         """Parse objective understanding response."""
+        # Check if context has explicit problem_type
+    def _parse_objective_understanding_response(self, response: str, explicit_problem_type: Optional[str] = None) -> Dict[str, Any]:
+        """Parse objective understanding response."""
+        # Use explicit problem_type from context if provided, otherwise default to classification
+        problem_type = explicit_problem_type or "classification"
+        
+        # Set evaluation metrics based on problem type
+        if problem_type == "regression":
+            evaluation_metrics = ["r2_score", "rmse", "mae", "mape"]
+        else:
+            evaluation_metrics = ["accuracy", "precision", "recall", "f1_score"]
+        
         return {
-            "problem_type": "classification",  # Extracted from LLM response
-            "success_criteria": "high_accuracy",
+            "problem_type": problem_type,
+            "success_criteria": "high_accuracy" if problem_type == "classification" else "low_error",
             "constraints": ["time_limit", "resource_limit"],
-            "evaluation_metrics": ["accuracy", "precision", "recall"],
+            "evaluation_metrics": evaluation_metrics,
             "technical_requirements": ["feature_engineering", "cross_validation"],
             "raw_understanding": response
         }

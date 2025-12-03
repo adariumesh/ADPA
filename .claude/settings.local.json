@@ -74,7 +74,8 @@
       "Bash(cat:*)",
       "Bash(grep:*)",
       "Bash(npx cdk bootstrap:*)",
-      "Bash(npx cdk:*)"
+      "Bash(npx cdk:*)",
+      "Bash(--execution-arn \"arn:aws:states:us-east-2:083308938449:execution:adpa-ml-pipeline-workflow:real-demo-execution-1764781222\" )"
     ],
     "deny": []
   }

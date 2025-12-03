@@ -29,6 +29,8 @@ import {
   DialogContent,
   DialogActions,
   CircularProgress,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
@@ -46,6 +48,7 @@ interface PipelineConfig {
   description: string;
   type: 'classification' | 'regression' | 'clustering' | 'anomaly_detection';
   objective: string;
+  useRealAws?: boolean; // ✅ Real AWS toggle (default true)
   targetColumn?: string;
   features?: string[];
   algorithm?: string;
@@ -60,6 +63,7 @@ const PipelineBuilder: React.FC = () => {
     description: '',
     type: 'classification',
     objective: '',
+    useRealAws: true, // ✅ Default to true (real AWS infrastructure)
   });
   const [uploading, setUploading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -150,7 +154,10 @@ const PipelineBuilder: React.FC = () => {
         updatedAt: new Date().toISOString(),
       };
 
-      const created = await apiService.createPipeline(pipeline);
+      const created = await apiService.createPipeline({
+        ...pipeline,
+        useRealAws: config.useRealAws !== undefined ? config.useRealAws : true, // ✅ Pass as config
+      });
       if (created) {
         // Reset form
         setActiveStep(0);
@@ -330,6 +337,28 @@ const PipelineBuilder: React.FC = () => {
                     placeholder="Optional description for your pipeline..."
                     multiline
                     rows={3}
+                  />
+                </Grid>
+                <Grid size={12}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={config.useRealAws || false}
+                        onChange={(e) => handleConfigChange('useRealAws', e.target.checked)}
+                        color="primary"
+                      />
+                    }
+                    label={
+                      <Box>
+                        <Typography component="span">
+                          Use Real AWS Infrastructure
+                        </Typography>
+                        <Typography variant="caption" display="block" color="text.secondary">
+                          Execute pipeline on actual AWS services (Step Functions + SageMaker). 
+                          Uncheck for simulation mode.
+                        </Typography>
+                      </Box>
+                    }
                   />
                 </Grid>
                 {dataUpload && (config.type === 'classification' || config.type === 'regression') && (

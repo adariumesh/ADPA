@@ -60,28 +60,29 @@ class ApiService {
     try {
       const response: AxiosResponse<ApiResponse<Pipeline[]>> = await this.api.get('/pipelines');
       if (response.data.pipelines) {
-        // Handle the actual Lambda response format
+        // Handle the actual Lambda response format - map backend fields to frontend interface
         return response.data.pipelines.map((pipeline: any) => ({
-          id: pipeline.pipeline_id || pipeline.id,
-          name: pipeline.config?.name || pipeline.objective || 'Unnamed Pipeline',
+          id: pipeline.id || pipeline.pipeline_id,
+          name: pipeline.name || pipeline.objective || 'Unnamed Pipeline',
           status: pipeline.status || 'pending',
           createdAt: pipeline.created_at || new Date().toISOString(),
-          updatedAt: pipeline.updated_at || new Date().toISOString(),
+          updatedAt: pipeline.completed_at || pipeline.updated_at || pipeline.created_at || new Date().toISOString(),
           objective: pipeline.objective || '',
           dataset: pipeline.dataset_path || '',
-          progress: pipeline.progress || this.calculateProgress(pipeline.status),
-          description: pipeline.config?.description || '',
-          type: pipeline.config?.type || 'classification',
-          model: pipeline.result?.model || undefined,
+          progress: this.calculateProgress(pipeline.status),
+          description: pipeline.description || '',
+          type: pipeline.type || 'classification',
+          // Extract metrics from result object
+          model: pipeline.result?.model_path || undefined,
           accuracy: pipeline.result?.performance_metrics?.accuracy || 
-                   pipeline.result?.performance_metrics?.r2_score || undefined,
-          // Pass through the full result object for ResultsViewer
+                   pipeline.result?.metrics?.accuracy ||
+                   pipeline.result?.performance_metrics?.r2_score || 
+                   pipeline.result?.metrics?.r2_score || undefined,
+          // Pass through the full result object for detailed views
           result: pipeline.result,
           modelPath: pipeline.result?.model_path,
-          // Include steps for Pipeline Monitor
-          steps: pipeline.steps,
-          error: pipeline.error,
-          aiInsights: pipeline.ai_insights,
+          error: pipeline.error || (pipeline.result?.status === 'FAILED' ? pipeline.result?.error : undefined),
+          aiInsights: pipeline.result?.ai_insights || pipeline.result?.summary,
         }));
       }
       return response.data.data || [];
@@ -103,25 +104,47 @@ class ApiService {
 
   async getPipeline(id: string): Promise<Pipeline | null> {
     try {
-      const response: AxiosResponse<ApiResponse<Pipeline>> = await this.api.get(`/pipelines/${id}`);
-      return response.data.data || null;
+      const response: AxiosResponse<any> = await this.api.get(`/pipelines/${id}`);
+      const pipeline = response.data;
+      
+      // Map backend response to frontend Pipeline interface
+      return {
+        id: pipeline.id || pipeline.pipeline_id,
+        name: pipeline.name || pipeline.objective || 'Unnamed Pipeline',
+        status: pipeline.status || 'pending',
+        createdAt: pipeline.created_at || new Date().toISOString(),
+        updatedAt: pipeline.completed_at || pipeline.updated_at || pipeline.created_at || new Date().toISOString(),
+        objective: pipeline.objective || '',
+        dataset: pipeline.dataset_path || '',
+        progress: this.calculateProgress(pipeline.status),
+        description: pipeline.description || '',
+        type: pipeline.type || 'classification',
+        model: pipeline.result?.model_path || undefined,
+        accuracy: pipeline.result?.performance_metrics?.accuracy || 
+                 pipeline.result?.metrics?.accuracy ||
+                 pipeline.result?.performance_metrics?.r2_score || 
+                 pipeline.result?.metrics?.r2_score || undefined,
+        result: pipeline.result,
+        modelPath: pipeline.result?.model_path,
+        error: pipeline.error || (pipeline.result?.status === 'FAILED' ? pipeline.result?.error : undefined),
+        aiInsights: pipeline.result?.ai_insights || pipeline.result?.summary,
+      };
     } catch (error) {
       console.error('Error fetching pipeline:', error);
       return null;
     }
   }
 
-  async createPipeline(pipeline: Partial<Pipeline>): Promise<Pipeline | null> {
+  async createPipeline(pipeline: Partial<Pipeline> & { useRealAws?: boolean }): Promise<Pipeline | null> {
     try {
       // Transform to Lambda expected format
       const pipelineRequest = {
         dataset_path: pipeline.dataset || '',
         objective: pipeline.objective || '',
-        config: {
-          name: pipeline.name || '',
-          description: pipeline.description || '',
-          type: pipeline.type || 'classification'
-        }
+        use_real_aws: pipeline.useRealAws !== undefined ? pipeline.useRealAws : true, // Default to true (real AWS)
+        name: pipeline.name || '',
+        description: pipeline.description || '',
+        type: pipeline.type || 'classification'
       };
       
       const response: AxiosResponse<any> = await this.api.post('/pipelines', pipelineRequest);
@@ -229,11 +252,16 @@ class ApiService {
       const fileContent = await file.text();
       const base64Content = btoa(fileContent);
 
-      // Send as raw body with headers (Lambda expects base64)
-      const response: AxiosResponse<any> = await this.api.post('/data/upload', base64Content, {
+      // Send as JSON payload (Lambda expects this format)
+      const uploadPayload = {
+        filename: file.name,
+        content: base64Content,
+        encoding: 'base64'
+      };
+
+      const response: AxiosResponse<any> = await this.api.post('/data/upload', uploadPayload, {
         headers: {
-          'Content-Type': 'text/plain',
-          'x-filename': file.name,
+          'Content-Type': 'application/json',
         },
       });
       
@@ -343,41 +371,9 @@ class ApiService {
   // Real-time pipeline monitoring
   async monitorPipeline(pipelineId: string): Promise<PipelineExecution | null> {
     try {
-      // First try the execution endpoint
-      const response = await this.api.get(`/pipelines/${pipelineId}/execution`);
-      if (response.data.data) {
-        return response.data.data;
-      }
-      
-      // If execution endpoint returns empty, try getting pipeline directly (which has steps)
-      const pipelineResponse = await this.api.get(`/pipelines/${pipelineId}`);
-      const pipelineData = pipelineResponse.data.pipeline || pipelineResponse.data;
-      
-      if (pipelineData && pipelineData.steps) {
-        // Build execution from pipeline data
-        return {
-          id: `exec-${pipelineId}`,
-          pipelineId: pipelineId,
-          status: pipelineData.status || 'pending',
-          startTime: pipelineData.started_at || pipelineData.created_at || new Date().toISOString(),
-          endTime: pipelineData.completed_at || pipelineData.updated_at,
-          steps: pipelineData.steps.map((step: any, idx: number) => ({
-            id: `step${idx + 1}`,
-            name: step.name,
-            status: step.status,
-            duration: step.duration,
-            logs: step.details ? [step.details] : [],
-          })),
-          logs: pipelineData.error ? [`[ERROR] ${pipelineData.error}`] : [],
-          metrics: {
-            cpu_usage: pipelineData.status === 'running' ? 65 : 10,
-            memory_usage: pipelineData.status === 'running' ? 78 : 25,
-            progress: pipelineData.progress || 0,
-          },
-        };
-      }
-      
-      return null;
+      // Get pipeline status - correct endpoint is /pipelines/{id} not /pipelines/{id}/status
+      const response = await this.api.get(`/pipelines/${pipelineId}`);
+      return response.data.data || response.data || null;
     } catch (error) {
       console.error('Error monitoring pipeline:', error);
       return null;
@@ -388,14 +384,27 @@ class ApiService {
   async getPipelineLogs(pipelineId: string): Promise<string[]> {
     try {
       const response = await this.api.get(`/pipelines/${pipelineId}/logs`);
-      return response.data.data || [];
+      return response.data.logs || response.data.data || [];
     } catch (error) {
       console.error('Error fetching pipeline logs:', error);
       return [];
     }
   }
 
-  // Stop running pipeline
+  // Execute pipeline
+  async executePipelineById(pipelineId: string, useRealAws: boolean = false): Promise<PipelineExecution | null> {
+    try {
+      const response: AxiosResponse<any> = await this.api.post(`/pipelines/${pipelineId}/execute`, {
+        use_real_aws: useRealAws
+      });
+      return response.data.data || response.data || null;
+    } catch (error) {
+      console.error('Error executing pipeline:', error);
+      throw error;
+    }
+  }
+
+  // Stop running pipeline (not implemented in current Lambda but adding for completeness)
   async stopPipeline(pipelineId: string): Promise<boolean> {
     try {
       await this.api.post(`/pipelines/${pipelineId}/stop`);

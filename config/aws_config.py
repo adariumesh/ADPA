@@ -198,7 +198,7 @@ def get_s3_uri(bucket: str, key: str) -> str:
     return f"s3://{bucket}/{key}"
 
 
-def get_cloudwatch_dashboard_url(dashboard_name: str = "ADPA-Dashboard") -> str:
+def get_cloudwatch_dashboard_url(dashboard_name: str = "ADPA-PROD-Dashboard") -> str:
     """Generate CloudWatch dashboard URL"""
     return f"https://{AWS_REGION}.console.aws.amazon.com/cloudwatch/home?region={AWS_REGION}#dashboards:name={dashboard_name}"
 

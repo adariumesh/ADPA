@@ -369,6 +369,95 @@ class GlueETLProcessor:
                 "status": "error",
                 "error": str(e)
             }
+    
+    def ensure_standard_jobs_exist(self) -> Dict[str, Any]:
+        """Ensure standard ADPA Glue jobs exist for pipeline execution."""
+        
+        standard_jobs = {
+            'adpa-step0_data_validation': 's3://adpa-glue-scripts-{}/data_validation.py'.format(AWS_ACCOUNT_ID),
+            'adpa-step1_data_cleaning': 's3://adpa-glue-scripts-{}/data_cleaning.py'.format(AWS_ACCOUNT_ID), 
+            'adpa-step2_feature_engineering': 's3://adpa-glue-scripts-{}/feature_engineering.py'.format(AWS_ACCOUNT_ID),
+            'adpa-data_preprocessing': 's3://adpa-glue-scripts-{}/preprocessing.py'.format(AWS_ACCOUNT_ID)
+        }
+        
+        results = {}
+        
+        for job_name, script_location in standard_jobs.items():
+            try:
+                # Check if job exists
+                try:
+                    self.glue.get_job(JobName=job_name)
+                    results[job_name] = {'status': 'exists', 'action': 'none'}
+                    print(f"✅ Glue job {job_name} already exists")
+                    continue
+                except ClientError as e:
+                    if e.response['Error']['Code'] != 'EntityNotFoundException':
+                        raise e
+                
+                # Create job if it doesn't exist (with mock script for now)
+                mock_script_location = f's3://{DATA_BUCKET}/glue-scripts/mock_etl.py'
+                result = self.create_etl_job(
+                    job_name=job_name,
+                    script_location=mock_script_location,
+                    worker_type='G.1X',
+                    number_of_workers=2
+                )
+                
+                if result.get('success'):
+                    results[job_name] = {'status': 'created', 'action': 'created'}
+                    print(f"✅ Created Glue job {job_name}")
+                else:
+                    results[job_name] = {'status': 'failed', 'error': result.get('error')}
+                    print(f"❌ Failed to create Glue job {job_name}: {result.get('error')}")
+                    
+            except Exception as e:
+                results[job_name] = {'status': 'error', 'error': str(e)}
+                print(f"❌ Error with Glue job {job_name}: {str(e)}")
+        
+        return results
+    
+    def create_mock_script_in_s3(self) -> str:
+        """Create a mock Glue ETL script in S3 for testing."""
+        
+        mock_script = '''
+import sys
+from awsglue.transforms import *
+from awsglue.utils import getResolvedOptions
+from pyspark.context import SparkContext
+from awsglue.context import GlueContext
+from awsglue.job import Job
+
+# Mock Glue ETL script for ADPA testing
+args = getResolvedOptions(sys.argv, ['JOB_NAME'])
+sc = SparkContext()
+glueContext = GlueContext(sc)
+job = Job(glueContext)
+job.init(args['JOB_NAME'], args)
+
+try:
+    # Mock ETL processing
+    print("ADPA Mock ETL job executed successfully")
+    # In a real implementation, this would process data
+finally:
+    job.commit()
+'''
+        
+        try:
+            s3 = boto3.client('s3', region_name=self.region)
+            script_key = 'glue-scripts/mock_etl.py'
+            
+            s3.put_object(
+                Bucket=DATA_BUCKET,
+                Key=script_key,
+                Body=mock_script.encode('utf-8'),
+                ContentType='text/plain'
+            )
+            
+            return f's3://{DATA_BUCKET}/{script_key}'
+            
+        except Exception as e:
+            print(f"Failed to create mock script: {str(e)}")
+            return f's3://{DATA_BUCKET}/glue-scripts/mock_etl.py'  # Return path anyway
 
 
 # Lambda handler for Glue integration

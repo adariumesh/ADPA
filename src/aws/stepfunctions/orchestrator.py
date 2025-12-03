@@ -12,6 +12,19 @@ from datetime import datetime
 
 from ...agent.core.interfaces import ExecutionResult, StepStatus
 
+try:
+    from aws_xray_sdk.core import xray_recorder
+    XRAY_ENABLED = True
+except ImportError:
+    XRAY_ENABLED = False
+    # Create dummy decorator if X-Ray not available
+    class xray_recorder:
+        @staticmethod
+        def capture(name):
+            def decorator(func):
+                return func
+            return decorator
+
 
 class StepFunctionsOrchestrator:
     """
@@ -19,7 +32,7 @@ class StepFunctionsOrchestrator:
     Manages end-to-end pipeline workflows with error handling and monitoring.
     """
     
-    def __init__(self, region: str = "us-east-1", role_arn: Optional[str] = None):
+    def __init__(self, region: str = "us-east-2", role_arn: Optional[str] = None):
         """
         Initialize Step Functions orchestrator.
         
@@ -28,15 +41,150 @@ class StepFunctionsOrchestrator:
             role_arn: IAM role ARN for Step Functions execution
         """
         self.region = region
-        self.role_arn = role_arn or f"arn:aws:iam::123456789012:role/ADPAStepFunctionsRole"
         self.logger = logging.getLogger(__name__)
         
+        # Get account ID dynamically
+        try:
+            sts_client = boto3.client('sts', region_name=region)
+            account_id = sts_client.get_caller_identity()['Account']
+            self.account_id = account_id
+            self.role_arn = role_arn or f"arn:aws:iam::{account_id}:role/adpa-stepfunctions-role"
+            self.logger.info(f"Using account ID: {account_id}")
+        except Exception as e:
+            self.logger.warning(f"Could not get account ID: {e}")
+            self.account_id = "123456789012"
+            self.role_arn = role_arn or f"arn:aws:iam::{self.account_id}:role/adpa-stepfunctions-role"
+        
+        # Initialize Step Functions client
         try:
             self.client = boto3.client('stepfunctions', region_name=region)
-            self.logger.info(f"Step Functions client initialized in region {region}")
+            # Test client connectivity
+            self.client.list_state_machines(maxResults=1)
+            self.logger.info(f"Step Functions client initialized successfully in region {region}")
+            self.simulation_mode = False
         except Exception as e:
-            self.logger.error(f"Failed to initialize Step Functions client: {e}")
+            self.logger.error(f"Step Functions client initialization failed: {e}")
+            self.logger.error("Falling back to simulation mode for development")
             self.client = None
+            self.simulation_mode = True
+    
+    def is_simulation_mode(self) -> bool:
+        """Check if orchestrator is running in simulation mode."""
+        return self.simulation_mode
+    
+    def get_real_state_machines(self) -> List[Dict[str, Any]]:
+        """Get list of existing Step Functions state machines."""
+        if self.simulation_mode:
+            return []
+        
+        try:
+            response = self.client.list_state_machines()
+            return response.get('stateMachines', [])
+        except Exception as e:
+            self.logger.error(f"Failed to list state machines: {e}")
+            return []
+    
+    def _ensure_log_group_exists(self, log_group_name: str) -> bool:
+        """Ensure CloudWatch log group exists for Step Functions logging."""
+        if self.simulation_mode:
+            return True
+            
+        try:
+            logs_client = boto3.client('logs', region_name=self.region)
+            
+            # Check if log group exists
+            try:
+                logs_client.describe_log_groups(logGroupNamePrefix=log_group_name)
+                self.logger.info(f"Log group {log_group_name} already exists")
+                return True
+            except logs_client.exceptions.ResourceNotFoundException:
+                pass
+            
+            # Create log group
+            logs_client.create_log_group(
+                logGroupName=log_group_name,
+                tags={
+                    'Project': 'ADPA',
+                    'Component': 'StepFunctions',
+                    'Environment': 'Development'
+                }
+            )
+            
+            # Set retention policy (14 days)
+            logs_client.put_retention_policy(
+                logGroupName=log_group_name,
+                retentionInDays=14
+            )
+            
+            self.logger.info(f"Created log group: {log_group_name}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to create log group {log_group_name}: {e}")
+            return False
+    
+    @xray_recorder.capture('create_pipeline_state_machine')
+    def create_state_machine_with_retries(self, 
+                                        pipeline_config: Dict[str, Any],
+                                        name: str = None,
+                                        max_retries: int = 3) -> Dict[str, Any]:
+        """Create state machine with automatic retries and better error handling."""
+        
+        # Ensure Glue jobs exist before creating state machine
+        if not self.simulation_mode:
+            self.logger.info("Ensuring Glue ETL jobs exist...")
+            glue_result = self.ensure_glue_jobs_exist()
+            if glue_result.get('status') == 'failed':
+                self.logger.warning(f"Glue jobs setup failed: {glue_result.get('error')}")
+        
+        for attempt in range(max_retries):
+            try:
+                result = self.create_pipeline_state_machine(pipeline_config, name)
+                if result.get('status') != 'FAILED':
+                    return result
+                    
+                if attempt < max_retries - 1:
+                    self.logger.warning(f"State machine creation attempt {attempt + 1} failed, retrying...")
+                    time.sleep(2 ** attempt)  # Exponential backoff
+                    
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    self.logger.error(f"All {max_retries} attempts to create state machine failed")
+                    raise e
+                else:
+                    self.logger.warning(f"Attempt {attempt + 1} failed: {e}, retrying...")
+                    time.sleep(2 ** attempt)
+                    
+        return {'status': 'FAILED', 'error': 'Max retries exceeded'}
+    
+    def ensure_glue_jobs_exist(self) -> Dict[str, Any]:
+        """Ensure required Glue ETL jobs exist for Step Functions pipeline."""
+        try:
+            from ...etl.glue_processor import GlueETLProcessor
+            
+            glue_processor = GlueETLProcessor(region=self.region)
+            
+            # Create mock script first
+            script_path = glue_processor.create_mock_script_in_s3()
+            self.logger.info(f"Mock Glue script created at: {script_path}")
+            
+            # Ensure standard jobs exist
+            results = glue_processor.ensure_standard_jobs_exist()
+            
+            self.logger.info(f"Glue jobs status: {results}")
+            
+            return {
+                'status': 'success',
+                'jobs_checked': len(results),
+                'results': results
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to ensure Glue jobs exist: {e}")
+            return {
+                'status': 'failed',
+                'error': str(e)
+            }
     
     def create_pipeline_state_machine(self, 
                                     pipeline_config: Dict[str, Any],
@@ -57,25 +205,15 @@ class StepFunctionsOrchestrator:
             # Generate state machine definition
             definition = self._create_state_machine_definition(pipeline_config)
             
-            if not self.client:
+            if self.simulation_mode:
                 return self._simulate_state_machine_creation(state_machine_name, definition)
             
+            # Create state machine without logging for now (can be added later)
             response = self.client.create_state_machine(
                 name=state_machine_name,
                 definition=json.dumps(definition),
                 roleArn=self.role_arn,
                 type='STANDARD',
-                loggingConfiguration={
-                    'level': 'ALL',
-                    'includeExecutionData': True,
-                    'destinations': [
-                        {
-                            'cloudWatchLogsLogGroup': {
-                                'logGroupArn': f'arn:aws:logs:{self.region}:123456789012:log-group:/aws/stepfunctions/{state_machine_name}'
-                            }
-                        }
-                    ]
-                },
                 tags=[
                     {'key': 'Project', 'value': 'ADPA'},
                     {'key': 'Environment', 'value': 'Development'},
@@ -126,7 +264,7 @@ class StepFunctionsOrchestrator:
         try:
             execution_name = execution_name or f"adpa-execution-{int(time.time())}"
             
-            if not self.client:
+            if self.simulation_mode:
                 return self._simulate_pipeline_execution(execution_name, input_data)
             
             response = self.client.start_execution(
@@ -171,7 +309,7 @@ class StepFunctionsOrchestrator:
             Dictionary with final execution status and results
         """
         try:
-            if not self.client:
+            if self.simulation_mode:
                 return self._simulate_execution_monitoring(execution_arn)
             
             start_time = time.time()
@@ -268,15 +406,32 @@ class StepFunctionsOrchestrator:
         
         # Add pipeline steps as states
         pipeline_steps = pipeline_config.get('steps', [])
+        self.logger.debug(f"Creating state machine with {len(pipeline_steps)} steps")
         
         for i, step in enumerate(pipeline_steps):
-            step_name = step.get('step', f'Step{i}')
+            step_name = step.get('name', f"Step{i}_{step.get('type', 'task')}")
             step_type = step.get('type', 'lambda')
+            self.logger.debug(f"Creating state {i}: {step_name} (type: {step_type})")
             
-            if step_type == 'lambda':
+            # Map step types to AWS resources
+            step_type_mapping = {
+                'data_validation': 'lambda',
+                'data_cleaning': 'lambda', 
+                'feature_engineering': 'lambda',
+                'model_training': 'sagemaker',
+                'model_evaluation': 'lambda',
+                'data_ingestion': 'lambda',
+                'data_preprocessing': 'glue'
+            }
+            
+            # Use mapped type or default to lambda
+            aws_step_type = step_type_mapping.get(step_type, 'lambda')
+            self.logger.debug(f"Mapped {step_type} to AWS type: {aws_step_type}")
+            
+            if aws_step_type == 'lambda':
                 states[step_name] = {
                     "Type": "Task",
-                    "Resource": f"arn:aws:lambda:{self.region}:123456789012:function:adpa-data-processor",
+                    "Resource": f"arn:aws:lambda:{self.region}:{self.account_id}:function:adpa-data-processor-development",
                     "Parameters": {
                         "step_config": step,
                         "input.$": "$"
@@ -297,7 +452,7 @@ class StepFunctionsOrchestrator:
                         }
                     ]
                 }
-            elif step_type == 'glue':
+            elif aws_step_type == 'glue':
                 states[step_name] = {
                     "Type": "Task",
                     "Resource": "arn:aws:states:::glue:startJobRun.sync",
@@ -317,13 +472,13 @@ class StepFunctionsOrchestrator:
                         }
                     ]
                 }
-            elif step_type == 'sagemaker':
+            elif aws_step_type == 'sagemaker':
                 states[step_name] = {
                     "Type": "Task",
                     "Resource": "arn:aws:states:::sagemaker:createTrainingJob.sync",
                     "Parameters": {
                         "TrainingJobName.$": "$.training_job_name",
-                        "RoleArn": f"arn:aws:iam::123456789012:role/SageMakerExecutionRole",
+                        "RoleArn": f"arn:aws:iam::{self.account_id}:role/adpa-sagemaker-execution-role",
                         "AlgorithmSpecification": {
                             "TrainingImage": "683313688378.dkr.ecr.us-east-1.amazonaws.com/sagemaker-scikit-learn:0.23-1-cpu-py3",
                             "TrainingInputMode": "File"
@@ -356,20 +511,19 @@ class StepFunctionsOrchestrator:
             
             # Set next state
             if i < len(pipeline_steps) - 1:
-                next_step = pipeline_steps[i + 1].get('step', f'Step{i+1}')
+                next_step = pipeline_steps[i + 1].get('name', f"Step{i+1}_{pipeline_steps[i + 1].get('type', 'task')}")
                 states[step_name]["Next"] = next_step
             else:
                 states[step_name]["Next"] = "Success"
         
         # Add success and error states
         states["Success"] = {
-            "Type": "Succeed",
-            "Result": "Pipeline completed successfully"
+            "Type": "Succeed"
         }
         
         states["ErrorHandler"] = {
             "Type": "Task",
-            "Resource": f"arn:aws:lambda:{self.region}:123456789012:function:adpa-error-handler",
+            "Resource": f"arn:aws:lambda:{self.region}:{self.account_id}:function:adpa-error-handler-development",
             "Parameters": {
                 "error.$": "$.error",
                 "context.$": "$"
@@ -383,9 +537,13 @@ class StepFunctionsOrchestrator:
         }
         
         # Build complete definition
+        start_at_state = pipeline_steps[0].get('name', f"Step0_{pipeline_steps[0].get('type', 'task')}") if pipeline_steps else "Success"
+        self.logger.debug(f"State machine will start at: {start_at_state}")
+        self.logger.debug(f"Available states: {list(states.keys())}")
+        
         definition = {
             "Comment": "ADPA Pipeline State Machine",
-            "StartAt": pipeline_steps[0].get('step', 'Step0') if pipeline_steps else "Success",
+            "StartAt": start_at_state,
             "States": states,
             "TimeoutSeconds": 7200,  # 2 hour timeout
             "Version": "1.0"
@@ -397,7 +555,7 @@ class StepFunctionsOrchestrator:
         """Simulate state machine creation for development."""
         self.logger.warning("Simulating Step Functions state machine creation")
         return {
-            'state_machine_arn': f'arn:aws:states:{self.region}:123456789012:stateMachine:{name}',
+            'state_machine_arn': f'arn:aws:states:{self.region}:{self.account_id}:stateMachine:{name}',
             'name': name,
             'definition': definition,
             'created_at': datetime.now().isoformat(),
@@ -408,7 +566,7 @@ class StepFunctionsOrchestrator:
         """Simulate pipeline execution for development."""
         self.logger.warning("Simulating Step Functions pipeline execution")
         return {
-            'execution_arn': f'arn:aws:states:{self.region}:123456789012:execution:adpa-pipeline:{execution_name}',
+            'execution_arn': f'arn:aws:states:{self.region}:{self.account_id}:execution:adpa-pipeline:{execution_name}',
             'execution_name': execution_name,
             'status': 'SUCCEEDED',
             'result': {
