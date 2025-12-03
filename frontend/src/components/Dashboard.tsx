@@ -17,12 +17,21 @@ import {
   TableRow,
   Paper,
   Tooltip,
+  Alert,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
   Refresh as RefreshIcon,
   Visibility as ViewIcon,
   Delete as DeleteIcon,
+  Psychology as AIIcon,
+  CheckCircle as CheckIcon,
+  Cancel as ErrorIcon,
+  AutoAwesome as SparkleIcon,
 } from '@mui/icons-material';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
 import { Pipeline, DashboardStats } from '../types';
@@ -32,6 +41,7 @@ const Dashboard: React.FC = () => {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [aiStatus, setAiStatus] = useState<any>(null);
 
   useEffect(() => {
     loadData();
@@ -43,6 +53,15 @@ const Dashboard: React.FC = () => {
       // Use real API to get pipelines and stats
       const pipelinesData = await apiService.getPipelines();
       const statsData = await apiService.getDashboardStats();
+      
+      // Get AI/health status
+      try {
+        const response = await fetch('https://cr1kkj7213.execute-api.us-east-2.amazonaws.com/prod/health');
+        const healthData = await response.json();
+        setAiStatus(healthData);
+      } catch (e) {
+        console.error('Could not fetch AI status:', e);
+      }
       
       setPipelines(pipelinesData);
       setStats(statsData);
@@ -179,6 +198,90 @@ const Dashboard: React.FC = () => {
           </Card>
         </Grid>
       </Grid>
+
+      {/* AI Capabilities Status Card */}
+      {aiStatus && (
+        <Card sx={{ mb: 4, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+          <CardContent>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+              <AIIcon sx={{ fontSize: 40, color: 'white', mr: 2 }} />
+              <Box>
+                <Typography variant="h5" sx={{ color: 'white', fontWeight: 'bold' }}>
+                  🤖 ADPA Agentic AI System
+                </Typography>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>
+                  Version {aiStatus.version || '4.0.0-agentic'} | Powered by Amazon Bedrock
+                </Typography>
+              </Box>
+              <Chip 
+                label={aiStatus.status === 'healthy' ? '● Online' : '○ Degraded'} 
+                sx={{ 
+                  ml: 'auto', 
+                  bgcolor: aiStatus.status === 'healthy' ? '#4caf50' : '#ff9800',
+                  color: 'white',
+                  fontWeight: 'bold'
+                }} 
+              />
+            </Box>
+            
+            <Grid container spacing={2}>
+              {/* Components Status */}
+              <Grid size={{ xs: 12, md: 4 }}>
+                <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.1)' }}>
+                  <Typography variant="subtitle2" sx={{ color: 'white', mb: 1 }}>
+                    System Components
+                  </Typography>
+                  <List dense>
+                    {aiStatus.components && Object.entries(aiStatus.components).map(([key, value]) => (
+                      <ListItem key={key} sx={{ py: 0 }}>
+                        <ListItemIcon sx={{ minWidth: 32 }}>
+                          {value ? <CheckIcon sx={{ color: '#4caf50', fontSize: 18 }} /> : <ErrorIcon sx={{ color: '#f44336', fontSize: 18 }} />}
+                        </ListItemIcon>
+                        <ListItemText 
+                          primary={key.replace('_', ' ').toUpperCase()} 
+                          primaryTypographyProps={{ sx: { color: 'white', fontSize: '0.85rem' } }}
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                </Paper>
+              </Grid>
+              
+              {/* AI Capabilities */}
+              <Grid size={{ xs: 12, md: 8 }}>
+                <Paper sx={{ p: 2, bgcolor: 'rgba(255,255,255,0.1)' }}>
+                  <Typography variant="subtitle2" sx={{ color: 'white', mb: 1 }}>
+                    <SparkleIcon sx={{ fontSize: 16, mr: 0.5, verticalAlign: 'middle' }} />
+                    AI Capabilities (Amazon Bedrock Claude 3.5)
+                  </Typography>
+                  <Grid container spacing={1}>
+                    {aiStatus.ai_capabilities?.agentic_features?.map((feature: string, index: number) => (
+                      <Grid key={index} size={{ xs: 6 }}>
+                        <Chip
+                          icon={<CheckIcon sx={{ color: 'white !important' }} />}
+                          label={feature.replace(/_/g, ' ')}
+                          size="small"
+                          sx={{ 
+                            bgcolor: 'rgba(255,255,255,0.2)', 
+                            color: 'white',
+                            fontSize: '0.75rem',
+                            '& .MuiChip-icon': { color: 'white' }
+                          }}
+                        />
+                      </Grid>
+                    ))}
+                  </Grid>
+                  {aiStatus.ai_capabilities?.bedrock_enabled && (
+                    <Alert severity="success" sx={{ mt: 2, bgcolor: 'rgba(76, 175, 80, 0.2)', color: 'white' }}>
+                      <strong>Bedrock AI Enabled:</strong> Pipelines use intelligent NL understanding, dataset analysis, and AI-powered planning
+                    </Alert>
+                  )}
+                </Paper>
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Charts */}
       <Grid container spacing={3} sx={{ mb: 4 }}>

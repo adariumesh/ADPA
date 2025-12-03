@@ -12,6 +12,12 @@ export interface Pipeline {
   progress: number;
   description?: string;
   type: 'classification' | 'regression' | 'clustering' | 'anomaly_detection';
+  // Extended fields from API
+  result?: any;
+  modelPath?: string;
+  steps?: any[];  // Pipeline execution steps from API
+  error?: string;
+  aiInsights?: any;
 }
 
 export interface PipelineExecutionStep {

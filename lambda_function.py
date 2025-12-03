@@ -324,7 +324,7 @@ class ADPALambdaOrchestrator:
 CORS_HEADERS = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, PUT, DELETE',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token'
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token, x-filename, X-Filename'
 }
 
 def add_cors_headers(response: Dict[str, Any]) -> Dict[str, Any]:
@@ -365,8 +365,49 @@ def parse_path_parameters(path: str) -> Dict[str, str]:
 # Global orchestrator instance
 orchestrator = ADPALambdaOrchestrator()
 
-# In-memory pipeline store (in production, use DynamoDB)
+# DynamoDB table for persistent pipeline storage
+PIPELINE_TABLE = 'adpa-pipelines'
+dynamodb = boto3.resource('dynamodb')
+pipeline_table = dynamodb.Table(PIPELINE_TABLE)
+
+# In-memory cache (will be refreshed from DynamoDB)
 pipeline_store = {}
+
+
+def save_pipeline_to_db(pipeline_data: Dict[str, Any]) -> None:
+    """Save pipeline to DynamoDB"""
+    try:
+        pipeline_table.put_item(Item={
+            'pipeline_id': pipeline_data['id'],
+            **pipeline_data
+        })
+    except Exception as e:
+        logger.error(f"Failed to save pipeline to DynamoDB: {e}")
+
+
+def get_pipeline_from_db(pipeline_id: str) -> Optional[Dict[str, Any]]:
+    """Get pipeline from DynamoDB"""
+    try:
+        response = pipeline_table.get_item(Key={'pipeline_id': pipeline_id})
+        if 'Item' in response:
+            item = response['Item']
+            # Convert Decimal to int/float for JSON serialization
+            return json.loads(json.dumps(item, default=str))
+        return None
+    except Exception as e:
+        logger.error(f"Failed to get pipeline from DynamoDB: {e}")
+        return None
+
+
+def list_pipelines_from_db() -> List[Dict[str, Any]]:
+    """List all pipelines from DynamoDB"""
+    try:
+        response = pipeline_table.scan()
+        items = response.get('Items', [])
+        return [json.loads(json.dumps(item, default=str)) for item in items]
+    except Exception as e:
+        logger.error(f"Failed to list pipelines from DynamoDB: {e}")
+        return []
 
 
 def handle_health_endpoint() -> Dict[str, Any]:
@@ -457,7 +498,7 @@ def handle_upload_data(event: Dict[str, Any], headers: Dict[str, str]) -> Dict[s
         })
 
 def handle_create_pipeline(body: Dict[str, Any]) -> Dict[str, Any]:
-    """Handle POST /pipelines endpoint"""
+    """Handle POST /pipelines endpoint - returns immediately, invokes async processing"""
     try:
         # Generate unique pipeline ID
         pipeline_id = str(uuid.uuid4())
@@ -467,46 +508,68 @@ def handle_create_pipeline(body: Dict[str, Any]) -> Dict[str, Any]:
         objective = body.get('objective', 'classification')
         config = body.get('config', {})
         
-        # Create pipeline event
-        pipeline_event = {
-            'action': 'run_pipeline',
-            'pipeline_id': pipeline_id,
-            'dataset_path': dataset_path,
-            'objective': objective,
-            'config': config
-        }
+        # Handle agentic request format (from frontend)
+        if 'request' in body:
+            objective = body.get('request', objective)
+        if 'dataset_info' in body:
+            dataset_info = body.get('dataset_info', {})
+            if not dataset_path and dataset_info.get('name'):
+                dataset_path = f"datasets/{dataset_info.get('name')}"
         
-        # Store pipeline info
-        pipeline_store[pipeline_id] = {
+        # Create pipeline data
+        pipeline_data = {
             'id': pipeline_id,
             'status': 'running',
             'created_at': datetime.utcnow().isoformat(),
             'dataset_path': dataset_path,
             'objective': objective,
-            'config': config
+            'config': config,
+            'steps': []
         }
         
-        # Execute pipeline asynchronously
-        try:
-            result = orchestrator.run_pipeline(pipeline_event)
-            
-            # Update pipeline status
-            if result.get('status') == 'completed':
-                pipeline_store[pipeline_id]['status'] = 'completed'
-                pipeline_store[pipeline_id]['completed_at'] = datetime.utcnow().isoformat()
-                pipeline_store[pipeline_id]['result'] = result
-            else:
-                pipeline_store[pipeline_id]['status'] = 'failed'
-                pipeline_store[pipeline_id]['error'] = result.get('error')
-        except Exception as exec_error:
-            logger.error(f"Pipeline execution error: {str(exec_error)}")
-            pipeline_store[pipeline_id]['status'] = 'failed'
-            pipeline_store[pipeline_id]['error'] = str(exec_error)
+        # Save to DynamoDB (persistent storage)
+        save_pipeline_to_db(pipeline_data)
         
-        return create_api_response(201, {
+        # Also cache in memory
+        pipeline_store[pipeline_id] = pipeline_data
+        
+        # Invoke this Lambda again asynchronously for processing
+        try:
+            lambda_client = boto3.client('lambda')
+            async_event = {
+                'action': 'process_pipeline_async',
+                'pipeline_id': pipeline_id,
+                'dataset_path': dataset_path,
+                'objective': objective,
+                'config': config
+            }
+            
+            lambda_client.invoke(
+                FunctionName='adpa-lambda-function',
+                InvocationType='Event',  # Async invocation
+                Payload=json.dumps(async_event)
+            )
+            
+            logger.info(f"Async pipeline processing started for {pipeline_id}")
+            
+        except Exception as invoke_error:
+            logger.error(f"Failed to invoke async processing: {invoke_error}")
+            # Update status to failed if we can't start processing
+            pipeline_data['status'] = 'failed'
+            pipeline_data['error'] = f"Failed to start processing: {invoke_error}"
+            save_pipeline_to_db(pipeline_data)
+        
+        # Return immediately with running status
+        return create_api_response(202, {
             'pipeline_id': pipeline_id,
-            'status': pipeline_store[pipeline_id]['status'],
-            'message': f'Pipeline created with ID: {pipeline_id}',
+            'status': 'running',
+            'message': 'Pipeline created and processing started',
+            'agentic_features': {
+                'nl_understanding': True,
+                'intelligent_analysis': True,
+                'experience_learning': True,
+                'ai_planning': True
+            },
             'timestamp': datetime.utcnow().isoformat()
         })
         
@@ -521,15 +584,19 @@ def handle_create_pipeline(body: Dict[str, Any]) -> Dict[str, Any]:
 def handle_list_pipelines() -> Dict[str, Any]:
     """Handle GET /pipelines endpoint"""
     try:
+        # Get pipelines from DynamoDB
+        db_pipelines = list_pipelines_from_db()
+        
         pipelines = []
-        for pipeline_id, pipeline_info in pipeline_store.items():
+        for pipeline_info in db_pipelines:
             # Create summary without full result details
             pipeline_summary = {
-                'id': pipeline_info['id'],
-                'status': pipeline_info['status'],
-                'created_at': pipeline_info['created_at'],
-                'objective': pipeline_info['objective'],
-                'dataset_path': pipeline_info['dataset_path']
+                'pipeline_id': pipeline_info.get('id') or pipeline_info.get('pipeline_id'),
+                'id': pipeline_info.get('id') or pipeline_info.get('pipeline_id'),
+                'status': pipeline_info.get('status', 'unknown'),
+                'created_at': pipeline_info.get('created_at', ''),
+                'objective': pipeline_info.get('objective', ''),
+                'dataset_path': pipeline_info.get('dataset_path', '')
             }
             
             if 'completed_at' in pipeline_info:
@@ -537,6 +604,12 @@ def handle_list_pipelines() -> Dict[str, Any]:
             
             if 'error' in pipeline_info:
                 pipeline_summary['error'] = pipeline_info['error']
+            
+            if 'steps' in pipeline_info:
+                pipeline_summary['steps'] = pipeline_info['steps']
+            
+            if 'result' in pipeline_info:
+                pipeline_summary['result'] = pipeline_info['result']
                 
             pipelines.append(pipeline_summary)
         
@@ -557,25 +630,26 @@ def handle_list_pipelines() -> Dict[str, Any]:
 def handle_get_pipeline_execution(pipeline_id: str) -> Dict[str, Any]:
     """Handle GET /pipelines/{id}/execution endpoint"""
     try:
-        if pipeline_id not in pipeline_store:
+        # Get from DynamoDB
+        pipeline_info = get_pipeline_from_db(pipeline_id)
+        
+        if not pipeline_info:
             return create_api_response(404, {
                 'status': 'error',
                 'error': f'Pipeline {pipeline_id} not found',
                 'timestamp': datetime.utcnow().isoformat()
             })
         
-        pipeline_info = pipeline_store[pipeline_id]
-        
-        # Create mock execution data based on pipeline status
+        # Create execution data based on pipeline status
         execution_data = {
             'id': f'exec-{pipeline_id}',
             'pipelineId': pipeline_id,
-            'status': pipeline_info['status'],
-            'startTime': pipeline_info['created_at'],
+            'status': pipeline_info.get('status', 'unknown'),
+            'startTime': pipeline_info.get('created_at'),
             'endTime': pipeline_info.get('completed_at'),
-            'steps': generate_execution_steps(pipeline_info['status']),
-            'logs': generate_execution_logs(pipeline_info['status']),
-            'metrics': generate_execution_metrics(pipeline_info['status'])
+            'steps': pipeline_info.get('steps') or generate_execution_steps(pipeline_info.get('status', 'pending')),
+            'logs': generate_execution_logs(pipeline_info.get('status', 'pending')),
+            'metrics': generate_execution_metrics(pipeline_info.get('status', 'pending'))
         }
         
         return create_api_response(200, {'data': execution_data})
@@ -591,15 +665,16 @@ def handle_get_pipeline_execution(pipeline_id: str) -> Dict[str, Any]:
 def handle_get_pipeline_logs(pipeline_id: str) -> Dict[str, Any]:
     """Handle GET /pipelines/{id}/logs endpoint"""
     try:
-        if pipeline_id not in pipeline_store:
+        pipeline_info = get_pipeline_from_db(pipeline_id)
+        
+        if not pipeline_info:
             return create_api_response(404, {
                 'status': 'error',
                 'error': f'Pipeline {pipeline_id} not found',
                 'timestamp': datetime.utcnow().isoformat()
             })
         
-        pipeline_info = pipeline_store[pipeline_id]
-        logs = generate_execution_logs(pipeline_info['status'])
+        logs = generate_execution_logs(pipeline_info.get('status', 'pending'))
         
         return create_api_response(200, {'data': logs})
         
@@ -614,17 +689,17 @@ def handle_get_pipeline_logs(pipeline_id: str) -> Dict[str, Any]:
 def handle_get_pipeline_status(pipeline_id: str) -> Dict[str, Any]:
     """Handle GET /pipelines/{id} endpoint"""
     try:
-        if pipeline_id not in pipeline_store:
+        pipeline_info = get_pipeline_from_db(pipeline_id)
+        
+        if not pipeline_info:
             return create_api_response(404, {
                 'status': 'error',
                 'error': f'Pipeline {pipeline_id} not found',
                 'timestamp': datetime.utcnow().isoformat()
             })
         
-        pipeline_info = pipeline_store[pipeline_id]
-        
         # Get real-time status from orchestrator if pipeline is running
-        if pipeline_info['status'] == 'running':
+        if pipeline_info.get('status') == 'running':
             status_event = {'pipeline_id': pipeline_id}
             live_status = orchestrator.get_pipeline_status(status_event)
             
@@ -749,6 +824,58 @@ def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
     logger.info(f"ADPA Lambda invoked with event: {json.dumps(event, default=str)}")
     
     try:
+        # Handle async pipeline processing (invoked from async Lambda call)
+        if event.get('action') == 'process_pipeline_async':
+            pipeline_id = event.get('pipeline_id')
+            logger.info(f"Processing async pipeline: {pipeline_id}")
+            
+            # Get pipeline from DynamoDB or create new entry
+            pipeline_data = get_pipeline_from_db(pipeline_id)
+            if not pipeline_data:
+                pipeline_data = {
+                    'id': pipeline_id,
+                    'status': 'running',
+                    'created_at': datetime.utcnow().isoformat(),
+                    'dataset_path': event.get('dataset_path', ''),
+                    'objective': event.get('objective', ''),
+                    'config': event.get('config', {}),
+                    'steps': []
+                }
+            
+            # Execute the pipeline
+            try:
+                pipeline_event = {
+                    'action': 'run_pipeline',
+                    'pipeline_id': pipeline_id,
+                    'dataset_path': event.get('dataset_path', ''),
+                    'objective': event.get('objective', ''),
+                    'config': event.get('config', {})
+                }
+                
+                result = orchestrator.run_pipeline(pipeline_event)
+                
+                # Update status
+                if result.get('status') == 'completed':
+                    pipeline_data['status'] = 'completed'
+                    pipeline_data['completed_at'] = datetime.utcnow().isoformat()
+                    pipeline_data['result'] = result
+                else:
+                    pipeline_data['status'] = 'failed'
+                    pipeline_data['error'] = result.get('error', 'Unknown error')
+                
+                # Save to DynamoDB
+                save_pipeline_to_db(pipeline_data)
+                    
+                logger.info(f"Async pipeline {pipeline_id} completed with status: {pipeline_data['status']}")
+                return {'status': 'processed', 'pipeline_id': pipeline_id}
+                
+            except Exception as exec_error:
+                logger.error(f"Async pipeline execution error: {str(exec_error)}")
+                pipeline_data['status'] = 'failed'
+                pipeline_data['error'] = str(exec_error)
+                save_pipeline_to_db(pipeline_data)
+                return {'status': 'failed', 'error': str(exec_error)}
+        
         # Handle API Gateway events
         if 'httpMethod' in event and 'path' in event:
             http_method = event['httpMethod'].upper()

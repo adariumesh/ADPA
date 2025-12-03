@@ -67,9 +67,13 @@ const PipelineMonitor: React.FC = () => {
   const loadPipelines = async () => {
     try {
       const data = await apiService.getPipelines();
+      console.log('Loaded pipelines:', data);
       setPipelines(data);
+      // Auto-select first pipeline if none selected
       if (data.length > 0 && !selectedPipeline) {
-        setSelectedPipeline(data[0].id);
+        const firstPipelineId = data[0].id;
+        console.log('Auto-selecting first pipeline:', firstPipelineId);
+        setSelectedPipeline(firstPipelineId);
       }
     } catch (error) {
       console.error('Error loading pipelines:', error);
@@ -79,112 +83,237 @@ const PipelineMonitor: React.FC = () => {
   const loadExecution = async (pipelineId: string) => {
     setLoading(true);
     try {
-      // Get pipeline details from API
+      // Get pipeline details from our local state
       const pipeline = pipelines.find(p => p.id === pipelineId);
+      console.log('Loading execution for pipeline:', pipelineId, pipeline);
       
-      // Create execution data based on pipeline status
-      const mockExecution: PipelineExecution = {
-        id: 'exec-' + pipelineId,
-        pipelineId,
-        status: pipeline?.status || 'pending',
-        startTime: pipeline?.createdAt || new Date().toISOString(),
-        endTime: pipeline?.status === 'completed' ? pipeline?.updatedAt : undefined,
-        steps: getStepsForStatus(pipeline?.status || 'pending'),
-        logs: getLogsForStatus(pipeline?.status || 'pending', pipeline?.objective || ''),
-        metrics: {
-          cpu_usage: pipeline?.status === 'running' ? 65 : (pipeline?.status === 'completed' ? 10 : 0),
-          memory_usage: pipeline?.status === 'running' ? 78 : (pipeline?.status === 'completed' ? 25 : 0),
-          progress: pipeline?.progress || 0,
-        },
-      };
+      // Try to get real execution data from the backend
+      const [executionData, executionLogs] = await Promise.all([
+        apiService.monitorPipeline(pipelineId),
+        apiService.getPipelineLogs(pipelineId).catch(() => [] as string[]), // Gracefully handle missing endpoint
+      ]);
       
-      setExecution(mockExecution);
-      setLogs(mockExecution.logs);
+      console.log('Execution data received:', executionData);
+      console.log('Execution logs received:', executionLogs);
+      
+      // Cast to any to handle different API response formats
+      const execData = executionData as any;
+      
+      if (execData && execData.steps && execData.steps.length > 0) {
+        // Use real execution data from backend - map to correct format
+        const mappedSteps: PipelineExecutionStep[] = execData.steps.map((step: any, idx: number) => ({
+          id: step.id || `step${idx + 1}`,
+          name: step.name || `Step ${idx + 1}`,
+          status: step.status || 'pending',
+          duration: step.duration,
+          startTime: step.startTime || step.start_time,
+          endTime: step.endTime || step.end_time,
+          logs: step.logs || (step.details ? [step.details] : []),
+        }));
+        
+        const mappedExecution: PipelineExecution = {
+          id: execData.id || `exec-${pipelineId}`,
+          pipelineId: pipelineId,
+          status: execData.status || pipeline?.status || 'pending',
+          startTime: execData.startTime || execData.start_time || pipeline?.createdAt || new Date().toISOString(),
+          endTime: execData.endTime || execData.end_time,
+          steps: mappedSteps,
+          logs: execData.logs || executionLogs || [],
+          metrics: execData.metrics || {
+            cpu_usage: pipeline?.status === 'running' ? 65 : (pipeline?.status === 'completed' ? 10 : 0),
+            memory_usage: pipeline?.status === 'running' ? 78 : (pipeline?.status === 'completed' ? 25 : 0),
+            progress: execData.progress || pipeline?.progress || 0,
+          },
+        };
+        
+        console.log('Mapped execution with steps:', mappedExecution);
+        setExecution(mappedExecution);
+        setLogs(mappedExecution.logs);
+      } else {
+        // Fallback: construct execution from pipeline data if no execution endpoint
+        const fallbackExecution: PipelineExecution = {
+          id: 'exec-' + pipelineId,
+          pipelineId,
+          status: pipeline?.status || 'pending',
+          startTime: pipeline?.createdAt || new Date().toISOString(),
+          endTime: pipeline?.status === 'completed' ? pipeline?.updatedAt : undefined,
+          steps: getStepsFromPipeline(pipeline),
+          logs: executionLogs.length > 0 ? executionLogs : getDefaultLogs(pipeline?.status || 'pending', pipeline?.objective || '', pipeline?.error),
+          metrics: {
+            cpu_usage: pipeline?.status === 'running' ? 65 : (pipeline?.status === 'completed' ? 10 : 0),
+            memory_usage: pipeline?.status === 'running' ? 78 : (pipeline?.status === 'completed' ? 25 : 0),
+            progress: pipeline?.progress || 0,
+          },
+        };
+        
+        setExecution(fallbackExecution);
+        setLogs(fallbackExecution.logs);
+      }
     } catch (error) {
       console.error('Error loading execution:', error);
+      // On error, try to show basic info from pipeline
+      const pipeline = pipelines.find(p => p.id === pipelineId);
+      if (pipeline) {
+        const errorExecution: PipelineExecution = {
+          id: 'exec-' + pipelineId,
+          pipelineId,
+          status: pipeline.status || 'pending',
+          startTime: pipeline.createdAt || new Date().toISOString(),
+          endTime: pipeline.status === 'completed' ? pipeline.updatedAt : undefined,
+          steps: getStepsFromPipeline(pipeline),
+          logs: [`[ERROR] Could not fetch execution details: ${error}`],
+          metrics: { cpu_usage: 0, memory_usage: 0, progress: pipeline.progress || 0 },
+        };
+        setExecution(errorExecution);
+        setLogs(errorExecution.logs);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  // Generate steps based on pipeline status
-  const getStepsForStatus = (status: string): PipelineExecutionStep[] => {
-    const baseSteps = [
-      { id: 'step1', name: 'Data Ingestion', logs: ['Loading dataset...', 'Data validation complete', 'Data ingested successfully'] },
-      { id: 'step2', name: 'Data Preprocessing', logs: ['Cleaning data...', 'Handling missing values', 'Feature scaling applied'] },
-      { id: 'step3', name: 'Feature Engineering', logs: ['Creating new features...', 'Feature selection complete'] },
-      { id: 'step4', name: 'Model Training', logs: ['Training model...', 'Optimizing hyperparameters'] },
-      { id: 'step5', name: 'Model Evaluation', logs: ['Evaluating model performance...', 'Generating metrics'] },
-    ];
+  // Generate steps from pipeline data (real data when available, calculated from timestamps otherwise)
+  const getStepsFromPipeline = (pipeline: Pipeline | undefined): PipelineExecutionStep[] => {
+    if (!pipeline) {
+      return getBaseSteps().map(step => ({
+        ...step,
+        status: 'pending' as const,
+        logs: ['Waiting for pipeline to start...'],
+      }));
+    }
+
+    // First, check if pipeline has real steps from the API
+    if (pipeline.steps && pipeline.steps.length > 0) {
+      console.log('Using real steps from pipeline:', pipeline.steps);
+      return pipeline.steps.map((step: any, idx: number) => ({
+        id: step.id || `step${idx + 1}`,
+        name: step.name || `Step ${idx + 1}`,
+        status: step.status || 'pending',
+        duration: step.duration,
+        startTime: step.startTime || step.start_time,
+        endTime: step.endTime || step.end_time,
+        logs: step.logs || (step.details ? [step.details] : ['Step details not available']),
+      }));
+    }
+
+    // If pipeline has an error, show it in the first step
+    if (pipeline.error) {
+      const errorSteps = getBaseSteps();
+      errorSteps[0] = {
+        ...errorSteps[0],
+        logs: [`Error: ${pipeline.error}`],
+      };
+      return errorSteps.map((step, idx) => ({
+        ...step,
+        status: idx === 0 ? 'failed' as const : 'pending' as const,
+        logs: idx === 0 ? step.logs : ['Not started due to previous error'],
+      }));
+    }
+
+    const status = pipeline.status;
+    const startTime = pipeline.createdAt ? new Date(pipeline.createdAt).getTime() : Date.now();
+    const endTime = pipeline.updatedAt ? new Date(pipeline.updatedAt).getTime() : Date.now();
+    const totalDuration = (endTime - startTime) / 1000; // in seconds
+    
+    const baseSteps = getBaseSteps();
+    const stepCount = baseSteps.length;
 
     if (status === 'completed') {
+      // Distribute actual execution time across steps
+      const stepDuration = totalDuration / stepCount;
       return baseSteps.map((step, idx) => ({
         ...step,
         status: 'completed' as const,
-        startTime: new Date(Date.now() - (5 - idx) * 60000).toISOString(),
-        endTime: new Date(Date.now() - (4 - idx) * 60000).toISOString(),
-        duration: 60,
+        startTime: new Date(startTime + idx * stepDuration * 1000).toISOString(),
+        endTime: new Date(startTime + (idx + 1) * stepDuration * 1000).toISOString(),
+        duration: Math.round(stepDuration),
       }));
     } else if (status === 'running') {
+      // Calculate which step we're on based on elapsed time and progress
+      const progress = pipeline.progress || 0;
+      const currentStepIndex = Math.floor((progress / 100) * stepCount);
+      const elapsedTime = (Date.now() - startTime) / 1000;
+      const stepDuration = currentStepIndex > 0 ? elapsedTime / currentStepIndex : 0;
+      
       return baseSteps.map((step, idx) => ({
         ...step,
-        status: idx < 2 ? 'completed' as const : (idx === 2 ? 'running' as const : 'pending' as const),
-        startTime: idx <= 2 ? new Date(Date.now() - (5 - idx) * 60000).toISOString() : undefined,
-        endTime: idx < 2 ? new Date(Date.now() - (4 - idx) * 60000).toISOString() : undefined,
-        duration: idx < 2 ? 60 : undefined,
-        logs: idx <= 2 ? step.logs : [],
+        status: idx < currentStepIndex ? 'completed' as const : 
+                (idx === currentStepIndex ? 'running' as const : 'pending' as const),
+        startTime: idx <= currentStepIndex ? new Date(startTime + idx * stepDuration * 1000).toISOString() : undefined,
+        endTime: idx < currentStepIndex ? new Date(startTime + (idx + 1) * stepDuration * 1000).toISOString() : undefined,
+        duration: idx < currentStepIndex ? Math.round(stepDuration) : undefined,
+        logs: idx <= currentStepIndex ? step.logs : [],
       }));
     } else if (status === 'failed') {
+      const progress = pipeline.progress || 0;
+      const failedStepIndex = Math.floor((progress / 100) * stepCount);
+      const elapsedTime = totalDuration;
+      const stepDuration = failedStepIndex > 0 ? elapsedTime / (failedStepIndex + 1) : elapsedTime;
+      
       return baseSteps.map((step, idx) => ({
         ...step,
-        status: idx < 2 ? 'completed' as const : (idx === 2 ? 'failed' as const : 'pending' as const),
-        startTime: idx <= 2 ? new Date(Date.now() - (5 - idx) * 60000).toISOString() : undefined,
-        endTime: idx <= 2 ? new Date(Date.now() - (4 - idx) * 60000).toISOString() : undefined,
-        duration: idx < 2 ? 60 : undefined,
-        logs: idx === 2 ? ['Error: Pipeline failed at this step'] : (idx < 2 ? step.logs : []),
+        status: idx < failedStepIndex ? 'completed' as const : 
+                (idx === failedStepIndex ? 'failed' as const : 'pending' as const),
+        startTime: idx <= failedStepIndex ? new Date(startTime + idx * stepDuration * 1000).toISOString() : undefined,
+        endTime: idx <= failedStepIndex ? new Date(startTime + (idx + 1) * stepDuration * 1000).toISOString() : undefined,
+        duration: idx <= failedStepIndex ? Math.round(stepDuration) : undefined,
+        logs: idx === failedStepIndex ? ['Error: Pipeline failed at this step'] : (idx < failedStepIndex ? step.logs : []),
       }));
     } else {
       return baseSteps.map(step => ({
         ...step,
         status: 'pending' as const,
-        logs: [],
+        logs: ['Waiting to start...'],
       }));
     }
   };
 
-  // Generate logs based on pipeline status
-  const getLogsForStatus = (status: string, objective: string): string[] => {
+  // Base step definitions
+  const getBaseSteps = () => [
+    { id: 'step1', name: 'Data Ingestion', logs: ['Loading dataset...', 'Data validation complete', 'Data ingested successfully'] },
+    { id: 'step2', name: 'Data Preprocessing', logs: ['Cleaning data...', 'Handling missing values', 'Feature scaling applied'] },
+    { id: 'step3', name: 'Feature Engineering', logs: ['Creating new features...', 'Feature selection complete'] },
+    { id: 'step4', name: 'Model Training', logs: ['Training model...', 'Optimizing hyperparameters'] },
+    { id: 'step5', name: 'Model Evaluation', logs: ['Evaluating model performance...', 'Generating metrics'] },
+  ];
+
+  // Default logs when backend logs are not available
+  const getDefaultLogs = (status: string, objective: string, error?: string): string[] => {
+    const timestamp = new Date().toLocaleTimeString();
     const baseLogs = [
-      `[INFO] Pipeline started for: ${objective}`,
-      '[INFO] Initializing data ingestion...',
+      `[${timestamp}] [INFO] Pipeline: ${objective || 'No objective specified'}`,
+      `[${timestamp}] [INFO] Status: ${status}`,
     ];
+    
+    if (error) {
+      return [
+        ...baseLogs,
+        `[${timestamp}] [ERROR] ${error}`,
+      ];
+    }
     
     if (status === 'completed') {
       return [
         ...baseLogs,
-        '[INFO] Data ingestion completed successfully',
-        '[INFO] Data preprocessing completed',
-        '[INFO] Feature engineering completed',
-        '[INFO] Model training completed',
-        '[INFO] Model evaluation completed',
-        '[SUCCESS] Pipeline completed successfully!',
+        `[${timestamp}] [SUCCESS] Pipeline completed successfully!`,
       ];
     } else if (status === 'running') {
       return [
         ...baseLogs,
-        '[INFO] Data ingestion completed',
-        '[INFO] Data preprocessing completed',
-        '[INFO] Feature engineering in progress...',
+        `[${timestamp}] [INFO] Pipeline is currently running...`,
       ];
     } else if (status === 'failed') {
       return [
         ...baseLogs,
-        '[INFO] Data ingestion completed',
-        '[INFO] Data preprocessing completed',
-        '[ERROR] Pipeline failed during feature engineering',
+        `[${timestamp}] [ERROR] Pipeline failed - check execution steps for details`,
+      ];
+    } else if (status === 'pending') {
+      return [
+        ...baseLogs,
+        `[${timestamp}] [INFO] Pipeline is pending - waiting to start`,
       ];
     }
-    return ['[INFO] Pipeline pending...'];
+    return baseLogs;
   };
 
   useEffect(() => {
@@ -357,7 +486,12 @@ const PipelineMonitor: React.FC = () => {
                   <Typography variant="h6" gutterBottom>
                     Execution Steps
                   </Typography>
-                  {execution?.steps.map((step, index) => (
+                  {(!execution || !execution.steps || execution.steps.length === 0) && (
+                    <Alert severity="info" sx={{ mb: 2 }}>
+                      Loading execution steps... If this persists, the pipeline may not have started yet.
+                    </Alert>
+                  )}
+                  {execution?.steps?.map((step, index) => (
                     <Accordion key={step.id}>
                       <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
