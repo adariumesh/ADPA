@@ -79,61 +79,22 @@ const PipelineMonitor: React.FC = () => {
   const loadExecution = async (pipelineId: string) => {
     setLoading(true);
     try {
-      // Mock execution data since we don't have real API yet
+      // Get pipeline details from API
+      const pipeline = pipelines.find(p => p.id === pipelineId);
+      
+      // Create execution data based on pipeline status
       const mockExecution: PipelineExecution = {
         id: 'exec-' + pipelineId,
         pipelineId,
-        status: 'running',
-        startTime: new Date(Date.now() - 300000).toISOString(), // 5 minutes ago
-        steps: [
-          {
-            id: 'step1',
-            name: 'Data Ingestion',
-            status: 'completed',
-            startTime: new Date(Date.now() - 300000).toISOString(),
-            endTime: new Date(Date.now() - 240000).toISOString(),
-            logs: ['Loading dataset...', 'Data validation complete', 'Data ingested successfully'],
-            duration: 60,
-          },
-          {
-            id: 'step2',
-            name: 'Data Preprocessing',
-            status: 'completed',
-            startTime: new Date(Date.now() - 240000).toISOString(),
-            endTime: new Date(Date.now() - 180000).toISOString(),
-            logs: ['Cleaning data...', 'Handling missing values', 'Feature scaling applied'],
-            duration: 60,
-          },
-          {
-            id: 'step3',
-            name: 'Feature Engineering',
-            status: 'running',
-            startTime: new Date(Date.now() - 180000).toISOString(),
-            logs: ['Creating new features...', 'Feature selection in progress...'],
-          },
-          {
-            id: 'step4',
-            name: 'Model Training',
-            status: 'pending',
-            logs: [],
-          },
-          {
-            id: 'step5',
-            name: 'Model Evaluation',
-            status: 'pending',
-            logs: [],
-          },
-        ],
-        logs: [
-          '[INFO] Pipeline execution started',
-          '[INFO] Data ingestion completed successfully',
-          '[INFO] Data preprocessing completed',
-          '[INFO] Feature engineering in progress...',
-        ],
+        status: pipeline?.status || 'pending',
+        startTime: pipeline?.createdAt || new Date().toISOString(),
+        endTime: pipeline?.status === 'completed' ? pipeline?.updatedAt : undefined,
+        steps: getStepsForStatus(pipeline?.status || 'pending'),
+        logs: getLogsForStatus(pipeline?.status || 'pending', pipeline?.objective || ''),
         metrics: {
-          cpu_usage: 65,
-          memory_usage: 78,
-          progress: 60,
+          cpu_usage: pipeline?.status === 'running' ? 65 : (pipeline?.status === 'completed' ? 10 : 0),
+          memory_usage: pipeline?.status === 'running' ? 78 : (pipeline?.status === 'completed' ? 25 : 0),
+          progress: pipeline?.progress || 0,
         },
       };
       
@@ -144,6 +105,86 @@ const PipelineMonitor: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Generate steps based on pipeline status
+  const getStepsForStatus = (status: string): PipelineExecutionStep[] => {
+    const baseSteps = [
+      { id: 'step1', name: 'Data Ingestion', logs: ['Loading dataset...', 'Data validation complete', 'Data ingested successfully'] },
+      { id: 'step2', name: 'Data Preprocessing', logs: ['Cleaning data...', 'Handling missing values', 'Feature scaling applied'] },
+      { id: 'step3', name: 'Feature Engineering', logs: ['Creating new features...', 'Feature selection complete'] },
+      { id: 'step4', name: 'Model Training', logs: ['Training model...', 'Optimizing hyperparameters'] },
+      { id: 'step5', name: 'Model Evaluation', logs: ['Evaluating model performance...', 'Generating metrics'] },
+    ];
+
+    if (status === 'completed') {
+      return baseSteps.map((step, idx) => ({
+        ...step,
+        status: 'completed' as const,
+        startTime: new Date(Date.now() - (5 - idx) * 60000).toISOString(),
+        endTime: new Date(Date.now() - (4 - idx) * 60000).toISOString(),
+        duration: 60,
+      }));
+    } else if (status === 'running') {
+      return baseSteps.map((step, idx) => ({
+        ...step,
+        status: idx < 2 ? 'completed' as const : (idx === 2 ? 'running' as const : 'pending' as const),
+        startTime: idx <= 2 ? new Date(Date.now() - (5 - idx) * 60000).toISOString() : undefined,
+        endTime: idx < 2 ? new Date(Date.now() - (4 - idx) * 60000).toISOString() : undefined,
+        duration: idx < 2 ? 60 : undefined,
+        logs: idx <= 2 ? step.logs : [],
+      }));
+    } else if (status === 'failed') {
+      return baseSteps.map((step, idx) => ({
+        ...step,
+        status: idx < 2 ? 'completed' as const : (idx === 2 ? 'failed' as const : 'pending' as const),
+        startTime: idx <= 2 ? new Date(Date.now() - (5 - idx) * 60000).toISOString() : undefined,
+        endTime: idx <= 2 ? new Date(Date.now() - (4 - idx) * 60000).toISOString() : undefined,
+        duration: idx < 2 ? 60 : undefined,
+        logs: idx === 2 ? ['Error: Pipeline failed at this step'] : (idx < 2 ? step.logs : []),
+      }));
+    } else {
+      return baseSteps.map(step => ({
+        ...step,
+        status: 'pending' as const,
+        logs: [],
+      }));
+    }
+  };
+
+  // Generate logs based on pipeline status
+  const getLogsForStatus = (status: string, objective: string): string[] => {
+    const baseLogs = [
+      `[INFO] Pipeline started for: ${objective}`,
+      '[INFO] Initializing data ingestion...',
+    ];
+    
+    if (status === 'completed') {
+      return [
+        ...baseLogs,
+        '[INFO] Data ingestion completed successfully',
+        '[INFO] Data preprocessing completed',
+        '[INFO] Feature engineering completed',
+        '[INFO] Model training completed',
+        '[INFO] Model evaluation completed',
+        '[SUCCESS] Pipeline completed successfully!',
+      ];
+    } else if (status === 'running') {
+      return [
+        ...baseLogs,
+        '[INFO] Data ingestion completed',
+        '[INFO] Data preprocessing completed',
+        '[INFO] Feature engineering in progress...',
+      ];
+    } else if (status === 'failed') {
+      return [
+        ...baseLogs,
+        '[INFO] Data ingestion completed',
+        '[INFO] Data preprocessing completed',
+        '[ERROR] Pipeline failed during feature engineering',
+      ];
+    }
+    return ['[INFO] Pipeline pending...'];
   };
 
   useEffect(() => {

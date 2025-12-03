@@ -63,7 +63,7 @@ class ApiService {
         // Handle the actual Lambda response format
         return response.data.pipelines.map((pipeline: any) => ({
           id: pipeline.id,
-          name: pipeline.objective || 'Unnamed Pipeline',
+          name: pipeline.config?.name || pipeline.objective || 'Unnamed Pipeline',
           status: pipeline.status || 'pending',
           createdAt: pipeline.created_at || new Date().toISOString(),
           updatedAt: pipeline.updated_at || new Date().toISOString(),
@@ -73,7 +73,11 @@ class ApiService {
           description: pipeline.config?.description || '',
           type: pipeline.config?.type || 'classification',
           model: pipeline.result?.model || undefined,
-          accuracy: pipeline.result?.performance_metrics?.accuracy || undefined
+          accuracy: pipeline.result?.performance_metrics?.accuracy || 
+                   pipeline.result?.performance_metrics?.r2_score || undefined,
+          // Pass through the full result object for ResultsViewer
+          result: pipeline.result,
+          modelPath: pipeline.result?.model_path,
         }));
       }
       return response.data.data || [];
@@ -87,8 +91,8 @@ class ApiService {
   private calculateProgress(status: string): number {
     switch (status) {
       case 'completed': return 100;
-      case 'running': return Math.floor(Math.random() * 70) + 20; // 20-90%
-      case 'failed': return Math.floor(Math.random() * 50);
+      case 'running': return 50; // Fixed value instead of random
+      case 'failed': return 0;
       default: return 0;
     }
   }
