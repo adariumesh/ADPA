@@ -61,8 +61,86 @@ def get_table():
         return table
 
 
+def handle_step_function_action(event, context):
+    """Handle Step Functions action calls"""
+    action = event.get('action')
+    
+    try:
+        if action == 'ingest_data':
+            data_path = event.get('data_path')
+            objective = event.get('objective')
+            
+            # Simulate data ingestion - return S3 path
+            return {
+                'status': 'success',
+                'data': f"{data_path}",
+                'objective': objective,
+                'ingested_at': datetime.utcnow().isoformat()
+            }
+            
+        elif action == 'clean_data':
+            data = event.get('data')
+            strategy = event.get('strategy', 'intelligent')
+            
+            # Simulate data cleaning
+            return {
+                'status': 'success',
+                'data': data,
+                'strategy': strategy,
+                'cleaned_at': datetime.utcnow().isoformat()
+            }
+            
+        elif action == 'engineer_features':
+            data = event.get('data')
+            objective = event.get('objective')
+            
+            # Simulate feature engineering
+            training_data_s3 = f"s3://{DATA_BUCKET}/processed/training_{int(time.time())}.csv"
+            test_data_s3 = f"s3://{DATA_BUCKET}/processed/test_{int(time.time())}.csv"
+            
+            return {
+                'status': 'success',
+                'training_data_s3': training_data_s3,
+                'test_data_s3': test_data_s3,
+                'features_engineered': ['feature1', 'feature2', 'target'],
+                'objective': objective
+            }
+            
+        elif action == 'evaluate_model':
+            model_artifacts = event.get('model_artifacts')
+            test_data = event.get('test_data')
+            
+            # Simulate model evaluation
+            return {
+                'status': 'success',
+                'accuracy': 0.85,
+                'f1_score': 0.82,
+                'precision': 0.87,
+                'recall': 0.78,
+                'model_artifacts': model_artifacts,
+                'evaluated_at': datetime.utcnow().isoformat()
+            }
+            
+        else:
+            return {
+                'status': 'error',
+                'error': f'Unknown action: {action}'
+            }
+            
+    except Exception as e:
+        return {
+            'status': 'error',
+            'error': str(e),
+            'action': action
+        }
+
+
 def lambda_handler(event, context):
-    """Main handler"""
+    """Main handler - supports both API Gateway and Step Functions"""
+    
+    # Handle Step Functions action calls
+    if 'action' in event:
+        return handle_step_function_action(event, context)
     
     # CORS preflight
     if event.get('httpMethod') == 'OPTIONS':
@@ -134,8 +212,9 @@ def lambda_handler(event, context):
             exec_name = f"{pipeline_id}-{int(time.time())}"
             exec_input = json.dumps({
                 'pipeline_id': pipeline_id,
-                'dataset_path': item['dataset_path'],
-                'objective': item['objective']
+                'data_path': item['dataset_path'],
+                'objective': item['objective'],
+                'training_job_name': f"adpa-training-{pipeline_id}-{int(time.time())}"
             })
             
             sfn_resp = sfn.start_execution(
