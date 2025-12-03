@@ -124,7 +124,15 @@ const ResultsViewer: React.FC = () => {
         return;
       }
 
-      // Try to fetch results from API, fallback to pipeline data
+      // Get REAL data from API monitoring endpoint
+      let pipelineData: any = null;
+      try {
+        pipelineData = await apiService.monitorPipeline(pipelineId);
+      } catch {
+        // Fallback to pipeline from list
+      }
+
+      // Try to fetch results from results API endpoint
       let apiResults: any = null;
       try {
         apiResults = await apiService.getModelResults(pipelineId);
@@ -132,22 +140,26 @@ const ResultsViewer: React.FC = () => {
         // API might not have results endpoint, use pipeline data
       }
 
-      // Get model type from pipeline result or API
-      const pipelineResult = (pipeline as any).result;
-      const modelType = pipelineResult?.model || (pipeline as any).model || apiResults?.modelType || 'Random Forest';
-      const modelPath = pipelineResult?.model_path || (pipeline as any).modelPath || apiResults?.modelPath || `/models/${pipelineId}/model.pkl`;
-      const trainingTime = apiResults?.trainingTime || pipelineResult?.training_time || 245;
+      // Get REAL model type and training time from API
+      const pipelineResult = pipelineData?.result || (pipeline as any).result || {};
+      const resultData = typeof pipelineResult === 'string' ? JSON.parse(pipelineResult) : pipelineResult;
+      
+      // Use REAL values from API, with reasonable fallbacks only if truly missing
+      const modelType = resultData?.model_type || pipelineData?.model_type || apiResults?.modelType || 'Auto-ML';
+      const modelPath = resultData?.model_path || pipelineData?.model_path || apiResults?.modelPath || `/models/${pipelineId}/model.pkl`;
+      const trainingTime = resultData?.training_time || pipelineData?.training_time || apiResults?.trainingTime || 0;
 
-      // Build results from pipeline data or API response
+      // Build results from REAL API response data
       const modelResults: ModelResults = {
         id: 'result-' + pipelineId,
         pipelineId,
         modelType: modelType,
-        metrics: buildMetricsFromPipeline(pipeline, apiResults),
+        metrics: buildMetricsFromPipeline(pipeline, pipelineData, apiResults),
         trainingTime: trainingTime,
         modelPath: modelPath,
         createdAt: pipeline.createdAt || new Date().toISOString(),
-        predictions: apiResults?.predictions || generateSamplePredictions(pipeline),
+        // Only generate sample predictions if no real predictions available
+        predictions: apiResults?.predictions || resultData?.predictions || generateSamplePredictions(pipeline),
       };
 
       setResults(modelResults);
@@ -158,12 +170,15 @@ const ResultsViewer: React.FC = () => {
     }
   };
 
-  // Build metrics from pipeline data
-  const buildMetricsFromPipeline = (pipeline: Pipeline, apiResults: any): ModelMetrics => {
-    // Check if pipeline has result data (from API)
-    const pipelineResult = (pipeline as any).result;
-    const perfMetrics = pipelineResult?.performance_metrics || {};
-    const featureImportance = pipelineResult?.feature_importance || {};
+  // Build metrics from REAL pipeline data
+  const buildMetricsFromPipeline = (pipeline: Pipeline, pipelineData: any, apiResults: any): ModelMetrics => {
+    // Check if pipeline has result data (from API) - prefer pipelineData from monitorPipeline
+    const pipelineResult = pipelineData?.result || (pipeline as any).result;
+    const resultObj = typeof pipelineResult === 'string' ? JSON.parse(pipelineResult) : pipelineResult || {};
+    
+    // Get REAL performance metrics from API response
+    const perfMetrics = pipelineData?.performance_metrics || resultObj?.performance_metrics || {};
+    const featureImportance = pipelineData?.feature_importance || resultObj?.feature_importance || {};
 
     // Convert feature importance object to array format
     const featureImportanceArray = Object.entries(featureImportance).length > 0

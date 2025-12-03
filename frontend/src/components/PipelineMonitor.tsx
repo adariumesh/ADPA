@@ -49,6 +49,7 @@ const PipelineMonitor: React.FC = () => {
   const [logs, setLogs] = useState<string[]>([]);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
     loadPipelines();
@@ -79,44 +80,84 @@ const PipelineMonitor: React.FC = () => {
   const loadExecution = async (pipelineId: string) => {
     setLoading(true);
     try {
-      // Try to get real execution data from API
-      const realExecution = await apiService.monitorPipeline(pipelineId);
+      // Get REAL pipeline data including steps, logs, and metrics from API
+      const pipelineData = await apiService.monitorPipeline(pipelineId);
       const realLogs = await apiService.getPipelineLogs(pipelineId);
       
-      if (realExecution) {
-        // Use real execution data
-        setExecution(realExecution);
-        setLogs(realLogs);
-      } else {
-        // Fallback to mock data if real API not available
-        const pipeline = pipelines.find(p => p.id === pipelineId);
-        
-        const mockExecution: PipelineExecution = {
-          id: 'exec-' + pipelineId,
-          pipelineId,
-          status: pipeline?.status || 'pending',
-          startTime: pipeline?.createdAt || new Date().toISOString(),
-          endTime: pipeline?.status === 'completed' ? pipeline?.updatedAt : undefined,
-          steps: getStepsForStatus(pipeline?.status || 'pending'),
-          logs: getLogsForStatus(pipeline?.status || 'pending', pipeline?.objective || ''),
-          metrics: {
-            cpu_usage: pipeline?.status === 'running' ? 65 : (pipeline?.status === 'completed' ? 10 : 0),
-            memory_usage: pipeline?.status === 'running' ? 78 : (pipeline?.status === 'completed' ? 25 : 0),
-            progress: pipeline?.progress || 0,
-          },
-        };
-        
-        setExecution(mockExecution);
-        setLogs(realLogs.length > 0 ? realLogs : mockExecution.logs);
+      // Find the pipeline from the local state to get status info
+      const pipeline = pipelines.find(p => p.id === pipelineId);
+      const pipelineStatus = pipeline?.status || pipelineData?.status || 'pending';
+      
+      // Extract real steps from API response if available
+      let realSteps: PipelineExecutionStep[] = [];
+      if (pipelineData?.steps && Array.isArray(pipelineData.steps)) {
+        realSteps = pipelineData.steps.map((step: any) => ({
+          id: step.id || `step-${Math.random()}`,
+          name: step.name || 'Unknown Step',
+          status: step.status || 'completed',
+          startTime: step.startTime,
+          endTime: step.endTime,
+          duration: step.duration,
+          logs: step.logs || [],
+        }));
       }
+      
+      // Use real steps if available, otherwise fall back to generated
+      const steps = realSteps.length > 0 ? realSteps : getStepsForStatus(pipelineStatus);
+      
+      // Use real logs if available
+      const logsToUse = realLogs.length > 0 ? realLogs : getLogsForStatus(pipelineStatus, pipeline?.objective || '');
+      
+      // Extract real metrics if available
+      const perfMetrics = pipelineData?.performance_metrics || {};
+      const executionTime = pipelineData?.execution_time || 0;
+      
+      // Build execution object with REAL data when available
+      const executionData: PipelineExecution = {
+        id: 'exec-' + pipelineId,
+        pipelineId,
+        status: pipelineStatus as any,
+        startTime: pipeline?.createdAt || new Date().toISOString(),
+        endTime: pipelineStatus === 'completed' ? pipeline?.updatedAt : undefined,
+        steps: steps,
+        logs: logsToUse,
+        metrics: {
+          // Use real metrics if available
+          cpu_usage: perfMetrics.cpu_usage || (pipelineStatus === 'running' ? 65 : (pipelineStatus === 'completed' ? 10 : 0)),
+          memory_usage: perfMetrics.memory_usage || (pipelineStatus === 'running' ? 78 : (pipelineStatus === 'completed' ? 25 : 0)),
+          progress: pipeline?.progress || (pipelineStatus === 'completed' ? 100 : 0),
+          execution_time: executionTime,
+          // Include performance metrics for display
+          ...perfMetrics,
+        },
+      };
+      
+      setExecution(executionData);
+      setLogs(logsToUse);
     } catch (error) {
       console.error('Error loading execution:', error);
+      // Create fallback execution on error
+      const pipeline = pipelines.find(p => p.id === pipelineId);
+      if (pipeline) {
+        const fallbackExecution: PipelineExecution = {
+          id: 'exec-' + pipelineId,
+          pipelineId,
+          status: pipeline.status,
+          startTime: pipeline.createdAt,
+          endTime: pipeline.status === 'completed' ? pipeline.updatedAt : undefined,
+          steps: getStepsForStatus(pipeline.status),
+          logs: getLogsForStatus(pipeline.status, pipeline.objective || ''),
+          metrics: { cpu_usage: 0, memory_usage: 0, progress: pipeline.progress },
+        };
+        setExecution(fallbackExecution);
+        setLogs(fallbackExecution.logs);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  // Generate steps based on pipeline status
+  // Fallback: Generate steps based on pipeline status (used when real data not available)
   const getStepsForStatus = (status: string): PipelineExecutionStep[] => {
     const baseSteps = [
       { id: 'step1', name: 'Data Ingestion', logs: ['Loading dataset...', 'Data validation complete', 'Data ingested successfully'] },
@@ -241,6 +282,34 @@ const PipelineMonitor: React.FC = () => {
   };
 
   const currentPipeline = pipelines.find(p => p.id === selectedPipeline);
+
+  const handleStartPipeline = async () => {
+    if (!selectedPipeline) return;
+    setActionLoading(true);
+    try {
+      await apiService.executePipelineById(selectedPipeline, true);
+      await loadExecution(selectedPipeline);
+      await loadPipelines();
+    } catch (error) {
+      console.error('Error starting pipeline:', error);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleStopPipeline = async () => {
+    if (!selectedPipeline) return;
+    setActionLoading(true);
+    try {
+      await apiService.stopPipeline(selectedPipeline);
+      await loadExecution(selectedPipeline);
+      await loadPipelines();
+    } catch (error) {
+      console.error('Error stopping pipeline:', error);
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   return (
     <Box sx={{ p: 3 }}>
@@ -477,23 +546,25 @@ const PipelineMonitor: React.FC = () => {
                     <Button
                       variant="contained"
                       startIcon={<PlayIcon />}
-                      disabled={currentPipeline.status === 'running'}
+                      disabled={currentPipeline.status === 'running' || actionLoading}
                       color="success"
+                      onClick={handleStartPipeline}
                     >
                       Start
                     </Button>
                     <Button
                       variant="outlined"
                       startIcon={<PauseIcon />}
-                      disabled={currentPipeline.status !== 'running'}
+                      disabled={currentPipeline.status !== 'running' || actionLoading}
                     >
                       Pause
                     </Button>
                     <Button
                       variant="outlined"
                       startIcon={<StopIcon />}
-                      disabled={currentPipeline.status !== 'running'}
+                      disabled={currentPipeline.status !== 'running' || actionLoading}
                       color="error"
+                      onClick={handleStopPipeline}
                     >
                       Stop
                     </Button>

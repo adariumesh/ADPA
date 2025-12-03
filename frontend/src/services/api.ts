@@ -368,12 +368,27 @@ class ApiService {
     }
   }
 
-  // Real-time pipeline monitoring
-  async monitorPipeline(pipelineId: string): Promise<PipelineExecution | null> {
+  // Real-time pipeline monitoring - returns full pipeline data with steps and metrics
+  async monitorPipeline(pipelineId: string): Promise<any> {
     try {
-      // Get pipeline status - correct endpoint is /pipelines/{id} not /pipelines/{id}/status
       const response = await this.api.get(`/pipelines/${pipelineId}`);
-      return response.data.data || response.data || null;
+      const data = response.data.data || response.data || null;
+      
+      // If the pipeline has a result object with real execution data, extract it
+      if (data && data.result) {
+        const result = typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
+        return {
+          ...data,
+          steps: result.steps || data.steps,
+          logs: result.logs || data.logs,
+          performance_metrics: result.performance_metrics || data.performance_metrics,
+          feature_importance: result.feature_importance || data.feature_importance,
+          execution_time: result.execution_time || data.execution_time,
+          training_time: result.training_time || data.training_time,
+          model_type: result.model_type || data.model_type,
+        };
+      }
+      return data;
     } catch (error) {
       console.error('Error monitoring pipeline:', error);
       return null;
@@ -387,6 +402,24 @@ class ApiService {
       return response.data.logs || response.data.data || [];
     } catch (error) {
       console.error('Error fetching pipeline logs:', error);
+      return [];
+    }
+  }
+
+  // Get pipeline execution steps
+  async getPipelineSteps(pipelineId: string): Promise<any[]> {
+    try {
+      const pipelineData = await this.monitorPipeline(pipelineId);
+      if (pipelineData?.steps) {
+        return pipelineData.steps;
+      }
+      // If steps are in result object
+      if (pipelineData?.result?.steps) {
+        return pipelineData.result.steps;
+      }
+      return [];
+    } catch (error) {
+      console.error('Error fetching pipeline steps:', error);
       return [];
     }
   }

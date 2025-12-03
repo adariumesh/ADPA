@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Grid,
   Card,
@@ -22,6 +23,11 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
@@ -38,10 +44,13 @@ import { Pipeline, DashboardStats } from '../types';
 import { apiService } from '../services/api';
 
 const Dashboard: React.FC = () => {
+  const navigate = useNavigate();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [aiStatus, setAiStatus] = useState<any>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [pipelineToDelete, setPipelineToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -79,6 +88,34 @@ const Dashboard: React.FC = () => {
     } catch (error) {
       console.error('Error executing pipeline:', error);
     }
+  };
+
+  const handleViewPipeline = (pipelineId: string) => {
+    // Navigate to monitor page with this pipeline selected
+    navigate('/monitor');
+  };
+
+  const handleDeleteClick = (pipelineId: string) => {
+    setPipelineToDelete(pipelineId);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (pipelineToDelete) {
+      try {
+        await apiService.deletePipeline(pipelineToDelete);
+        loadData(); // Refresh data
+      } catch (error) {
+        console.error('Error deleting pipeline:', error);
+      }
+    }
+    setDeleteDialogOpen(false);
+    setPipelineToDelete(null);
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteDialogOpen(false);
+    setPipelineToDelete(null);
   };
 
   const getStatusColor = (status: Pipeline['status']) => {
@@ -402,12 +439,20 @@ const Dashboard: React.FC = () => {
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="View Details">
-                        <IconButton size="small" color="info">
+                        <IconButton 
+                          size="small" 
+                          color="info"
+                          onClick={() => handleViewPipeline(pipeline.id)}
+                        >
                           <ViewIcon />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Delete Pipeline">
-                        <IconButton size="small" color="error">
+                        <IconButton 
+                          size="small" 
+                          color="error"
+                          onClick={() => handleDeleteClick(pipeline.id)}
+                        >
                           <DeleteIcon />
                         </IconButton>
                       </Tooltip>
@@ -419,6 +464,22 @@ const Dashboard: React.FC = () => {
           </TableContainer>
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onClose={handleDeleteCancel}>
+        <DialogTitle>Delete Pipeline</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete this pipeline? This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteCancel}>Cancel</Button>
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained">
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
