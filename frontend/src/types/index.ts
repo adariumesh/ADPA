@@ -44,6 +44,7 @@ export interface ModelMetrics {
   rmse?: number;
   mae?: number;
   r2Score?: number;
+  mape?: number;
   confusionMatrix?: number[][];
   featureImportance?: { feature: string; importance: number }[];
 }
