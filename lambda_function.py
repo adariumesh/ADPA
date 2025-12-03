@@ -8,15 +8,26 @@ import logging
 import os
 import sys
 
-# Add src to path for imports FIRST
-sys.path.insert(0, '/opt/python')
-sys.path.insert(0, './src')
-sys.path.insert(0, '.')
+# Configure paths FIRST before any other imports
+# Lambda extracts code to /var/task, we need src to be importable
+LAMBDA_TASK_ROOT = os.environ.get('LAMBDA_TASK_ROOT', os.path.dirname(os.path.abspath(__file__)))
+
+# Debug: print paths
+print(f"LAMBDA_TASK_ROOT: {LAMBDA_TASK_ROOT}")
+print(f"Current dir: {os.getcwd()}")
+print(f"Dir contents: {os.listdir(LAMBDA_TASK_ROOT) if os.path.exists(LAMBDA_TASK_ROOT) else 'N/A'}")
+
+# Add paths in priority order
+for path in [LAMBDA_TASK_ROOT, '/var/task', '/opt/python', '.']:
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 # Import compatibility shim FIRST to handle optional dependencies (before any ML imports)
 try:
     from src import compat
-except ImportError:
+    print("✅ src.compat imported successfully")
+except ImportError as e:
+    print(f"⚠️ src.compat import failed: {e}")
     pass  # Compat module is optional
 
 import traceback
@@ -544,25 +555,48 @@ def handle_upload_data(event: Dict[str, Any], headers: Dict[str, str]) -> Dict[s
             })
         
         # Check if body is base64 encoded (API Gateway sets this flag)
-        is_base64 = event.get('isBase64Encoded', False)
+        is_base64_gateway = event.get('isBase64Encoded', False)
         
-        if is_base64:
-            # Body is already base64 encoded by API Gateway
-            file_content = base64.b64decode(raw_body)
-        else:
-            # Try to decode if it looks like base64, otherwise use as-is
-            try:
-                file_content = base64.b64decode(raw_body)
-            except Exception:
-                # Not base64, use raw content
-                file_content = raw_body.encode('utf-8') if isinstance(raw_body, str) else raw_body
-        
-        # Get filename from headers (case-insensitive)
+        # First, try to parse as JSON (frontend sends JSON with base64 content)
         filename = None
-        for key, value in headers.items():
-            if key.lower() == 'x-filename':
-                filename = value
-                break
+        file_content = None
+        
+        try:
+            if is_base64_gateway:
+                json_body = json.loads(base64.b64decode(raw_body).decode('utf-8'))
+            else:
+                json_body = json.loads(raw_body)
+            
+            # JSON format: {filename, content, encoding}
+            filename = json_body.get('filename')
+            content = json_body.get('content', '')
+            encoding = json_body.get('encoding', 'base64')
+            
+            if encoding == 'base64' and content:
+                file_content = base64.b64decode(content)
+            else:
+                file_content = content.encode('utf-8') if isinstance(content, str) else content
+                
+            logger.info(f"📤 Parsed JSON upload: filename={filename}, size={len(file_content) if file_content else 0}")
+            
+        except (json.JSONDecodeError, ValueError) as e:
+            # Not JSON, try raw content handling
+            logger.info(f"Not JSON payload, trying raw content: {str(e)[:100]}")
+            
+            if is_base64_gateway:
+                file_content = base64.b64decode(raw_body)
+            else:
+                try:
+                    file_content = base64.b64decode(raw_body)
+                except Exception:
+                    file_content = raw_body.encode('utf-8') if isinstance(raw_body, str) else raw_body
+        
+        # Get filename from headers if not in JSON (case-insensitive)
+        if not filename:
+            for key, value in headers.items():
+                if key.lower() == 'x-filename':
+                    filename = value
+                    break
         
         if not filename:
             filename = f'upload-{datetime.utcnow().strftime("%Y%m%d%H%M%S")}.csv'
