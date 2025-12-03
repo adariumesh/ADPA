@@ -48,9 +48,9 @@ class LLMReasoningEngine:
     """
     
     def __init__(self, 
-                 provider: LLMProvider = LLMProvider.OPENAI,
-                 model_id: str = "gpt-4",
-                 region: str = "us-east-1"):
+                 provider: LLMProvider = LLMProvider.BEDROCK,
+                 model_id: str = "us.anthropic.claude-3-5-sonnet-20240620-v1:0",
+                 region: str = "us-east-2"):
         """
         Initialize the LLM reasoning engine with real LLM integration.
         
@@ -265,11 +265,14 @@ class LLMReasoningEngine:
         
         try:
             if self.provider == LLMProvider.BEDROCK and self.client:
+                # Use Messages API format for Claude 3+ models (inference profiles)
                 body = json.dumps({
-                    "prompt": f"\n\nHuman: {prompt}\n\nAssistant:",
-                    "max_tokens_to_sample": max_tokens,
+                    "anthropic_version": "bedrock-2023-05-31",
+                    "max_tokens": max_tokens,
+                    "messages": [
+                        {"role": "user", "content": prompt}
+                    ],
                     "temperature": temperature,
-                    "top_p": 0.9,
                 })
                 
                 response = self.client.invoke_model(
@@ -280,7 +283,9 @@ class LLMReasoningEngine:
                 )
                 
                 response_body = json.loads(response.get('body').read())
-                llm_response = response_body.get('completion', '')
+                # Handle Messages API response format
+                content = response_body.get('content', [])
+                llm_response = content[0].get('text', '') if content else ''
             
             elif self.provider == LLMProvider.OPENAI and self.client:
                 response = self.client.chat.completions.create(

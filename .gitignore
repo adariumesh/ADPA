@@ -22,6 +22,8 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+adpa-ml-layer.zip
+/Users/architgolatkar/arc/Fall2025/Cloud Computing/DL_Project/ADPA/adpa-ml-layer.zip
 
 # Virtual environments
 venv/
@@ -90,3 +92,5 @@ htmlcov/
 .mypy_cache/
 .dmypy.json
 dmypy.jsonAWS_CREDENTIALS_HANDOVER.txt
+adpa-ml-layer.zip
+*.zip

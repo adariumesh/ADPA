@@ -19,34 +19,52 @@ from typing import Dict, Any, Optional, Tuple
 # DEPLOYMENT CONFIGURATION
 # ============================================================================
 
+# Import centralized AWS configuration
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from config.aws_config import (
+        AWS_ACCOUNT_ID, AWS_REGION, DATA_BUCKET, MODEL_BUCKET,
+        LAMBDA_FUNCTION_NAME, LAMBDA_LAYER_NAME, get_credentials_from_csv
+    )
+except ImportError:
+    # Fallback values if config module not available
+    AWS_ACCOUNT_ID = "083308938449"
+    AWS_REGION = "us-east-2"
+    DATA_BUCKET = f"adpa-data-{AWS_ACCOUNT_ID}-development"
+    MODEL_BUCKET = f"adpa-models-{AWS_ACCOUNT_ID}-development"
+    LAMBDA_FUNCTION_NAME = "adpa-data-processor-development"
+    LAMBDA_LAYER_NAME = "adpa-ml-dependencies-clean"
+
 CONFIG = {
-    # AWS Configuration
-    "region": "us-east-2",
-    "account_id": "083308938449",
+    # AWS Configuration - Using centralized config
+    "region": AWS_REGION,
+    "account_id": AWS_ACCOUNT_ID,
     
     # Lambda Function Configuration
-    "function_name": "adpa-data-processor-development",
+    "function_name": LAMBDA_FUNCTION_NAME,
     "handler": "lambda_function.lambda_handler",
     "runtime": "python3.11",
     "memory": 3008,
     "timeout": 900,
     "architecture": "x86_64",
     
-    # S3 Buckets
-    "data_bucket": "adpa-data-083308938449-development",
-    "model_bucket": "adpa-models-083308938449-development",
+    # S3 Buckets - Using centralized config
+    "data_bucket": DATA_BUCKET,
+    "model_bucket": MODEL_BUCKET,
     
     # Lambda Layer Configuration
-    "layer_name": "adpa-ml-dependencies-clean",
+    "layer_name": LAMBDA_LAYER_NAME,
     "ml_libraries": {
         "pandas": "2.1.0",
         "numpy": "1.24.3",
-        "scikit-learn": "1.3.0"
+        "scikit-learn": "1.3.0",
+        "scipy": "1.11.0"
     },
-    "skip_scipy": True,  # Skip scipy to keep layer under 250MB limit
+    "skip_scipy": False,  # Include scipy for sklearn compatibility
     
     # IAM Role
-    "role_name": "adpa-lambda-execution-role-development",
+    "role_name": f"adpa-lambda-execution-role-development",
     
     # Deployment Artifacts
     "code_package": "adpa-deployment-code.zip",
@@ -66,9 +84,39 @@ class ADPADeployer:
             rebuild_layer: Whether to rebuild the Lambda Layer (default: False, use existing)
         """
         self.rebuild_layer = rebuild_layer
-        self.lambda_client = boto3.client('lambda', region_name=CONFIG['region'])
-        self.s3_client = boto3.client('s3', region_name=CONFIG['region'])
-        self.iam_client = boto3.client('iam', region_name=CONFIG['region'])
+        
+        # Load credentials from rootkey.csv
+        try:
+            from config.aws_config import get_credentials_from_csv
+            creds = get_credentials_from_csv()
+            if creds['access_key_id'] and creds['secret_access_key']:
+                self.lambda_client = boto3.client(
+                    'lambda', 
+                    region_name=CONFIG['region'],
+                    aws_access_key_id=creds['access_key_id'],
+                    aws_secret_access_key=creds['secret_access_key']
+                )
+                self.s3_client = boto3.client(
+                    's3', 
+                    region_name=CONFIG['region'],
+                    aws_access_key_id=creds['access_key_id'],
+                    aws_secret_access_key=creds['secret_access_key']
+                )
+                self.iam_client = boto3.client(
+                    'iam', 
+                    region_name=CONFIG['region'],
+                    aws_access_key_id=creds['access_key_id'],
+                    aws_secret_access_key=creds['secret_access_key']
+                )
+                print("✅ Loaded credentials from rootkey.csv")
+            else:
+                raise ValueError("No credentials found")
+        except Exception as e:
+            print(f"⚠️  Could not load credentials from rootkey.csv: {e}")
+            print("   Falling back to default AWS credential chain")
+            self.lambda_client = boto3.client('lambda', region_name=CONFIG['region'])
+            self.s3_client = boto3.client('s3', region_name=CONFIG['region'])
+            self.iam_client = boto3.client('iam', region_name=CONFIG['region'])
         
         self.layer_arn: Optional[str] = None
         self.function_arn: Optional[str] = None
@@ -76,6 +124,7 @@ class ADPADeployer:
         print("=" * 70)
         print("🚀 ADPA AWS Lambda Deployment")
         print("=" * 70)
+        print(f"Account: {CONFIG['account_id']}")
         print(f"Region: {CONFIG['region']}")
         print(f"Function: {CONFIG['function_name']}")
         print(f"Runtime: {CONFIG['runtime']}")

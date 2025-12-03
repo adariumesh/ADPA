@@ -6,31 +6,72 @@ that exceed Lambda's limitations (>1GB, >15 minutes processing time).
 """
 
 import json
+import os
 import boto3
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from botocore.exceptions import ClientError
 
+# Import centralized AWS configuration
+try:
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+    from config.aws_config import (
+        AWS_ACCOUNT_ID, AWS_REGION, DATA_BUCKET,
+        GLUE_EXECUTION_ROLE, get_credentials_from_csv
+    )
+except ImportError:
+    # Fallback values
+    AWS_ACCOUNT_ID = "083308938449"
+    AWS_REGION = "us-east-2"
+    DATA_BUCKET = f"adpa-data-{AWS_ACCOUNT_ID}-development"
+    GLUE_EXECUTION_ROLE = f"arn:aws:iam::{AWS_ACCOUNT_ID}:role/adpa-glue-execution-role"
+    get_credentials_from_csv = None
+
 
 class GlueETLProcessor:
     """Process large datasets using AWS Glue"""
     
-    def __init__(self, region: str = 'us-east-2'):
+    def __init__(self, region: str = None):
         """
         Initialize Glue ETL processor
         
         Args:
-            region: AWS region name
+            region: AWS region name (defaults to centralized config)
         """
-        self.region = region
-        self.glue = boto3.client('glue', region_name=region)
-        self.s3 = boto3.client('s3', region_name=region)
+        self.region = region or AWS_REGION
         
-        # Configuration
-        self.role_arn = "arn:aws:iam::083308938449:role/adpa-glue-execution-role"
-        self.script_bucket = "adpa-data-083308938449-development"
+        # Try to load credentials from rootkey.csv
+        try:
+            if get_credentials_from_csv:
+                creds = get_credentials_from_csv()
+                if creds['access_key_id'] and creds['secret_access_key']:
+                    self.glue = boto3.client(
+                        'glue', 
+                        region_name=self.region,
+                        aws_access_key_id=creds['access_key_id'],
+                        aws_secret_access_key=creds['secret_access_key']
+                    )
+                    self.s3 = boto3.client(
+                        's3', 
+                        region_name=self.region,
+                        aws_access_key_id=creds['access_key_id'],
+                        aws_secret_access_key=creds['secret_access_key']
+                    )
+                else:
+                    raise ValueError("No credentials in CSV")
+            else:
+                raise ValueError("Config module not available")
+        except Exception:
+            # Fallback to default credential chain
+            self.glue = boto3.client('glue', region_name=self.region)
+            self.s3 = boto3.client('s3', region_name=self.region)
+        
+        # Configuration from centralized config
+        self.role_arn = GLUE_EXECUTION_ROLE
+        self.script_bucket = DATA_BUCKET
         self.script_prefix = "glue-scripts/"
-        self.output_bucket = "adpa-data-083308938449-development"
+        self.output_bucket = DATA_BUCKET
         self.output_prefix = "processed-data/"
     
     def create_crawler(

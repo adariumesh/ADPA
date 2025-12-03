@@ -40,8 +40,8 @@ const Dashboard: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      // Use mock data for development, switch to real API when available
-      const pipelinesData = await apiService.getMockPipelines();
+      // Use real API to get pipelines and stats
+      const pipelinesData = await apiService.getPipelines();
       const statsData = await apiService.getDashboardStats();
       
       setPipelines(pipelinesData);

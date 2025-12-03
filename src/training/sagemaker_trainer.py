@@ -10,30 +10,71 @@ instead of Lambda, enabling:
 """
 
 import json
+import os
 import boto3
 import time
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 from botocore.exceptions import ClientError
 
+# Import centralized AWS configuration
+try:
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+    from config.aws_config import (
+        AWS_ACCOUNT_ID, AWS_REGION, MODEL_BUCKET, 
+        SAGEMAKER_EXECUTION_ROLE, get_credentials_from_csv
+    )
+except ImportError:
+    # Fallback values
+    AWS_ACCOUNT_ID = "083308938449"
+    AWS_REGION = "us-east-2"
+    MODEL_BUCKET = f"adpa-models-{AWS_ACCOUNT_ID}-development"
+    SAGEMAKER_EXECUTION_ROLE = f"arn:aws:iam::{AWS_ACCOUNT_ID}:role/adpa-sagemaker-execution-role"
+    get_credentials_from_csv = None
+
 
 class SageMakerTrainer:
     """Train ML models using AWS SageMaker"""
     
-    def __init__(self, region: str = 'us-east-2'):
+    def __init__(self, region: str = None):
         """
         Initialize SageMaker trainer
         
         Args:
-            region: AWS region name
+            region: AWS region name (defaults to centralized config)
         """
-        self.region = region
-        self.sagemaker = boto3.client('sagemaker', region_name=region)
-        self.s3 = boto3.client('s3', region_name=region)
+        self.region = region or AWS_REGION
         
-        # Configuration
-        self.role_arn = "arn:aws:iam::083308938449:role/adpa-sagemaker-execution-role"
-        self.output_bucket = "adpa-models-083308938449-development"
+        # Try to load credentials from rootkey.csv
+        try:
+            if get_credentials_from_csv:
+                creds = get_credentials_from_csv()
+                if creds['access_key_id'] and creds['secret_access_key']:
+                    self.sagemaker = boto3.client(
+                        'sagemaker', 
+                        region_name=self.region,
+                        aws_access_key_id=creds['access_key_id'],
+                        aws_secret_access_key=creds['secret_access_key']
+                    )
+                    self.s3 = boto3.client(
+                        's3', 
+                        region_name=self.region,
+                        aws_access_key_id=creds['access_key_id'],
+                        aws_secret_access_key=creds['secret_access_key']
+                    )
+                else:
+                    raise ValueError("No credentials in CSV")
+            else:
+                raise ValueError("Config module not available")
+        except Exception:
+            # Fallback to default credential chain
+            self.sagemaker = boto3.client('sagemaker', region_name=self.region)
+            self.s3 = boto3.client('s3', region_name=self.region)
+        
+        # Configuration from centralized config
+        self.role_arn = SAGEMAKER_EXECUTION_ROLE
+        self.output_bucket = MODEL_BUCKET
         self.training_image = self._get_training_image()
         
     def _get_training_image(self) -> str:

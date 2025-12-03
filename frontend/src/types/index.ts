@@ -72,10 +72,13 @@ export interface DataUpload {
 
 // API Response Types
 export interface ApiResponse<T> {
-  success: boolean;
+  success?: boolean;
   data?: T;
   error?: string;
   message?: string;
+  pipelines?: any[];  // For pipeline list responses
+  count?: number;
+  timestamp?: string;
 }
 
 // Dashboard Stats

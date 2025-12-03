@@ -3,6 +3,7 @@ Real Pipeline Executor for ADPA
 Executes ML pipelines on AWS infrastructure with Step Functions and SageMaker
 """
 
+import os
 import boto3
 import json
 import time
@@ -11,6 +12,23 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 from pathlib import Path
 import pandas as pd
+
+# Import centralized AWS configuration
+try:
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+    from config.aws_config import (
+        AWS_ACCOUNT_ID, AWS_REGION, DATA_BUCKET, MODEL_BUCKET,
+        STEP_FUNCTION_ARN, get_credentials_from_csv
+    )
+except ImportError:
+    # Fallback values
+    AWS_ACCOUNT_ID = "083308938449"
+    AWS_REGION = "us-east-2"
+    DATA_BUCKET = f"adpa-data-{AWS_ACCOUNT_ID}-development"
+    MODEL_BUCKET = f"adpa-models-{AWS_ACCOUNT_ID}-development"
+    STEP_FUNCTION_ARN = f"arn:aws:states:{AWS_REGION}:{AWS_ACCOUNT_ID}:stateMachine:adpa-ml-pipeline"
+    get_credentials_from_csv = None
 
 
 class RealPipelineExecutor:
@@ -26,31 +44,50 @@ class RealPipelineExecutor:
     """
     
     def __init__(self,
-                 region: str = 'us-east-2',
-                 account_id: str = '083308938449'):
+                 region: str = None,
+                 account_id: str = None):
         """
         Initialize the Real Pipeline Executor.
         
         Args:
-            region: AWS region
-            account_id: AWS account ID
+            region: AWS region (defaults to centralized config)
+            account_id: AWS account ID (defaults to centralized config)
         """
         self.logger = logging.getLogger(__name__)
-        self.region = region
-        self.account_id = account_id
+        self.region = region or AWS_REGION
+        self.account_id = account_id or AWS_ACCOUNT_ID
         
-        # Initialize AWS clients
-        self.s3 = boto3.client('s3', region_name=region)
-        self.stepfunctions = boto3.client('stepfunctions', region_name=region)
-        self.sagemaker = boto3.client('sagemaker', region_name=region)
-        self.cloudwatch = boto3.client('cloudwatch', region_name=region)
+        # Try to load credentials from rootkey.csv
+        try:
+            if get_credentials_from_csv:
+                creds = get_credentials_from_csv()
+                if creds['access_key_id'] and creds['secret_access_key']:
+                    session_kwargs = {
+                        'region_name': self.region,
+                        'aws_access_key_id': creds['access_key_id'],
+                        'aws_secret_access_key': creds['secret_access_key']
+                    }
+                    self.s3 = boto3.client('s3', **session_kwargs)
+                    self.stepfunctions = boto3.client('stepfunctions', **session_kwargs)
+                    self.sagemaker = boto3.client('sagemaker', **session_kwargs)
+                    self.cloudwatch = boto3.client('cloudwatch', **session_kwargs)
+                else:
+                    raise ValueError("No credentials in CSV")
+            else:
+                raise ValueError("Config module not available")
+        except Exception:
+            # Fallback to default credential chain
+            self.s3 = boto3.client('s3', region_name=self.region)
+            self.stepfunctions = boto3.client('stepfunctions', region_name=self.region)
+            self.sagemaker = boto3.client('sagemaker', region_name=self.region)
+            self.cloudwatch = boto3.client('cloudwatch', region_name=self.region)
         
-        # Resource names
-        self.data_bucket = f'adpa-data-{account_id}-production'
-        self.model_bucket = f'adpa-models-{account_id}-production'
-        self.state_machine_arn = f'arn:aws:states:{region}:{account_id}:stateMachine:adpa-ml-pipeline-workflow'
+        # Resource names from centralized config
+        self.data_bucket = DATA_BUCKET
+        self.model_bucket = MODEL_BUCKET
+        self.state_machine_arn = STEP_FUNCTION_ARN
         
-        self.logger.info(f"RealPipelineExecutor initialized for region {region}")
+        self.logger.info(f"RealPipelineExecutor initialized for account {self.account_id} in region {self.region}")
     
     def execute_pipeline(self,
                         data: pd.DataFrame,

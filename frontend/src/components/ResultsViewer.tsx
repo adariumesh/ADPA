@@ -102,7 +102,7 @@ const ResultsViewer: React.FC = () => {
 
   const loadPipelines = async () => {
     try {
-      const data = await apiService.getMockPipelines();
+      const data = await apiService.getPipelines();
       const completedPipelines = data.filter(p => p.status === 'completed');
       setPipelines(completedPipelines);
       if (completedPipelines.length > 0 && !selectedPipeline) {

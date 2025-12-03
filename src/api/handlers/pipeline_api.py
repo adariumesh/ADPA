@@ -14,6 +14,20 @@ import os
 
 # Add src directory to path
 sys.path.insert(0, '/var/task/src')
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+
+# Import centralized AWS configuration
+try:
+    from config.aws_config import (
+        AWS_ACCOUNT_ID, AWS_REGION, MODEL_BUCKET,
+        get_credentials_from_csv
+    )
+except ImportError:
+    # Fallback values
+    AWS_ACCOUNT_ID = "083308938449"
+    AWS_REGION = "us-east-2"
+    MODEL_BUCKET = f"adpa-models-{AWS_ACCOUNT_ID}-development"
+    get_credentials_from_csv = None
 
 from orchestration.step_function_handler import StepFunctionOrchestrator
 
@@ -24,8 +38,32 @@ class APIHandler:
     def __init__(self):
         """Initialize API handler"""
         self.orchestrator = StepFunctionOrchestrator()
-        self.s3 = boto3.client('s3')
-        self.cloudwatch_logs = boto3.client('logs', region_name='us-east-2')
+        self.model_bucket = MODEL_BUCKET
+        
+        # Try to load credentials from rootkey.csv
+        try:
+            if get_credentials_from_csv:
+                creds = get_credentials_from_csv()
+                if creds['access_key_id'] and creds['secret_access_key']:
+                    self.s3 = boto3.client(
+                        's3',
+                        aws_access_key_id=creds['access_key_id'],
+                        aws_secret_access_key=creds['secret_access_key']
+                    )
+                    self.cloudwatch_logs = boto3.client(
+                        'logs', 
+                        region_name=AWS_REGION,
+                        aws_access_key_id=creds['access_key_id'],
+                        aws_secret_access_key=creds['secret_access_key']
+                    )
+                else:
+                    raise ValueError("No credentials in CSV")
+            else:
+                raise ValueError("Config module not available")
+        except Exception:
+            # Fallback to default credential chain
+            self.s3 = boto3.client('s3')
+            self.cloudwatch_logs = boto3.client('logs', region_name=AWS_REGION)
         
     def handle_request(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -180,7 +218,7 @@ class APIHandler:
         """List trained models from S3"""
         try:
             response = self.s3.list_objects_v2(
-                Bucket='adpa-models-083308938449-development',
+                Bucket=self.model_bucket,
                 Prefix='models/'
             )
             
@@ -189,7 +227,7 @@ class APIHandler:
                 if obj['Key'].endswith('.pkl') or obj['Key'].endswith('.joblib'):
                     models.append({
                         "model_id": obj['Key'].split('/')[-1].replace('.pkl', '').replace('.joblib', ''),
-                        "s3_location": f"s3://adpa-models-083308938449-development/{obj['Key']}",
+                        "s3_location": f"s3://{self.model_bucket}/{obj['Key']}",
                         "size_bytes": obj['Size'],
                         "last_modified": obj['LastModified'].isoformat()
                     })

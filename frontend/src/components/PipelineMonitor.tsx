@@ -66,7 +66,7 @@ const PipelineMonitor: React.FC = () => {
 
   const loadPipelines = async () => {
     try {
-      const data = await apiService.getMockPipelines();
+      const data = await apiService.getPipelines();
       setPipelines(data);
       if (data.length > 0 && !selectedPipeline) {
         setSelectedPipeline(data[0].id);

@@ -217,29 +217,24 @@ class ApiService {
   // Data Upload API
   async uploadData(file: File): Promise<DataUpload | null> {
     try {
-      const formData = new FormData();
-      formData.append('file', file);
+      // Read file content and convert to base64
+      const fileContent = await file.text();
+      const base64Content = btoa(fileContent);
 
-      const response: AxiosResponse<ApiResponse<DataUpload>> = await this.api.post('/data/upload', formData, {
+      // Send as raw body with headers (Lambda expects base64)
+      const response: AxiosResponse<any> = await this.api.post('/data/upload', base64Content, {
         headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        onUploadProgress: (progressEvent) => {
-          if (progressEvent.total) {
-            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            console.log(`Upload progress: ${percentCompleted}%`);
-            // Emit progress event for UI updates
-            window.dispatchEvent(new CustomEvent('upload-progress', { detail: percentCompleted }));
-          }
+          'Content-Type': 'text/plain',
+          'x-filename': file.name,
         },
       });
       
-      // Mock data transformation for real S3 upload response
-      const mockDataUpload: DataUpload = {
-        id: response.data.data?.id || `upload-${Date.now()}`,
+      // Build data upload response
+      const dataUpload: DataUpload = {
+        id: response.data.id || response.data.upload_id || `upload-${Date.now()}`,
         filename: file.name,
         size: file.size,
-        uploadedAt: new Date().toISOString(),
+        uploadedAt: response.data.uploadedAt || new Date().toISOString(),
         columns: [],
         rowCount: 0,
         preview: []
@@ -247,8 +242,7 @@ class ApiService {
       
       // Parse CSV to get column info if it's a CSV file
       if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
-        const csvText = await file.text();
-        const lines = csvText.split('\n').filter(line => line.trim());
+        const lines = fileContent.split('\n').filter(line => line.trim());
         if (lines.length > 0) {
           const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
           const preview = lines.slice(1, 6).map(line => {
@@ -260,13 +254,13 @@ class ApiService {
             return row;
           });
           
-          mockDataUpload.columns = headers;
-          mockDataUpload.rowCount = lines.length - 1;
-          mockDataUpload.preview = preview;
+          dataUpload.columns = headers;
+          dataUpload.rowCount = lines.length - 1;
+          dataUpload.preview = preview;
         }
       }
       
-      return mockDataUpload;
+      return dataUpload;
     } catch (error) {
       console.error('Error uploading data:', error);
       throw error;

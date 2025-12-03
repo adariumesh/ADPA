@@ -5,6 +5,7 @@ This module provides utilities for starting, monitoring, and managing
 Step Functions state machine executions for ML pipeline orchestration.
 """
 
+import os
 import json
 import boto3
 import uuid
@@ -12,25 +13,58 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 from botocore.exceptions import ClientError
 
+# Import centralized AWS configuration
+try:
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+    from config.aws_config import (
+        AWS_ACCOUNT_ID, AWS_REGION, STEP_FUNCTION_ARN,
+        get_credentials_from_csv
+    )
+except ImportError:
+    # Fallback values
+    AWS_ACCOUNT_ID = "083308938449"
+    AWS_REGION = "us-east-2"
+    STEP_FUNCTION_ARN = f"arn:aws:states:{AWS_REGION}:{AWS_ACCOUNT_ID}:stateMachine:adpa-ml-pipeline"
+    get_credentials_from_csv = None
+
 
 class StepFunctionOrchestrator:
     """Orchestrates ML pipelines using AWS Step Functions"""
     
-    def __init__(self, region: str = 'us-east-2'):
+    def __init__(self, region: str = None):
         """
         Initialize Step Functions orchestrator
         
         Args:
-            region: AWS region name
+            region: AWS region name (defaults to centralized config)
         """
-        self.region = region
-        self.sfn_client = boto3.client('stepfunctions', region_name=region)
+        self.region = region or AWS_REGION
+        
+        # Try to load credentials from rootkey.csv
+        try:
+            if get_credentials_from_csv:
+                creds = get_credentials_from_csv()
+                if creds['access_key_id'] and creds['secret_access_key']:
+                    self.sfn_client = boto3.client(
+                        'stepfunctions', 
+                        region_name=self.region,
+                        aws_access_key_id=creds['access_key_id'],
+                        aws_secret_access_key=creds['secret_access_key']
+                    )
+                else:
+                    raise ValueError("No credentials in CSV")
+            else:
+                raise ValueError("Config module not available")
+        except Exception:
+            # Fallback to default credential chain
+            self.sfn_client = boto3.client('stepfunctions', region_name=self.region)
+        
         self.state_machine_arn = self._get_state_machine_arn()
         
     def _get_state_machine_arn(self) -> str:
         """Get the ARN of the ADPA pipeline state machine"""
-        # In production, this would be stored in environment variable or SSM Parameter Store
-        return f"arn:aws:states:{self.region}:083308938449:stateMachine:adpa-ml-pipeline"
+        return STEP_FUNCTION_ARN
     
     def start_pipeline(
         self,
