@@ -1,0 +1,27 @@
+{
+  "dataset_info": {
+    "name": "Credit Card Fraud Detection Dataset",
+    "description": "Realistic transaction data for fraud detection demonstration",
+    "size": [
+      1200,
+      7
+    ],
+    "target_variable": "IsFraud",
+    "problem_type": "Binary Classification (Imbalanced)",
+    "business_context": "Detect fraudulent transactions in real-time to prevent financial losses"
+  },
+  "data_characteristics": {
+    "fraud_rate": "2.0%",
+    "class_imbalance": "Highly imbalanced dataset typical of fraud detection"
+  },
+  "expected_ml_performance": {
+    "baseline_accuracy": "98%+ (due to class imbalance)",
+    "target_metric": "F1-Score and AUC-ROC",
+    "expected_f1_score": "0.75-0.90",
+    "key_predictive_features": [
+      "Amount",
+      "TransactionHour",
+      "DaysSinceLastTransaction"
+    ]
+  }
+}

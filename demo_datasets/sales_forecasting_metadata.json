@@ -1,0 +1,23 @@
+{
+  "dataset_info": {
+    "name": "Sales Forecasting Dataset",
+    "description": "Time series sales data for forecasting demonstration",
+    "size": [
+      2000,
+      8
+    ],
+    "target_variable": "Sales",
+    "problem_type": "Time Series Forecasting",
+    "business_context": "Forecast daily sales for inventory and planning optimization"
+  },
+  "expected_ml_performance": {
+    "baseline_mae": "150-200",
+    "expected_advanced_model_mae": "80-120",
+    "key_predictive_features": [
+      "Date",
+      "Temperature",
+      "MarketingSpend",
+      "PromotionActive"
+    ]
+  }
+}

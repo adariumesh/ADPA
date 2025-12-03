@@ -1,0 +1,66 @@
+{
+  "dataset_info": {
+    "name": "Customer Churn Prediction Dataset",
+    "description": "Realistic telecom customer churn dataset for ML pipeline demonstration",
+    "size": [
+      1500,
+      23
+    ],
+    "target_variable": "Churn",
+    "problem_type": "Binary Classification",
+    "business_context": "Predict customer churn to enable proactive retention strategies"
+  },
+  "data_characteristics": {
+    "total_customers": 1500,
+    "churn_rate": "26.9%",
+    "missing_data_percentage": "10.1%",
+    "numeric_features": [
+      "SeniorCitizen",
+      "Age",
+      "Tenure",
+      "MonthlyCharges",
+      "TotalCharges",
+      "AnnualIncome",
+      "Churn"
+    ],
+    "categorical_features": [
+      "CustomerID",
+      "Gender",
+      "Partner",
+      "Dependents",
+      "PhoneService",
+      "MultipleLines",
+      "InternetService",
+      "OnlineSecurity",
+      "OnlineBackup",
+      "DeviceProtection",
+      "TechSupport",
+      "StreamingTV",
+      "StreamingMovies",
+      "Contract",
+      "PaperlessBilling",
+      "PaymentMethod"
+    ]
+  },
+  "business_insights": {
+    "avg_monthly_revenue_per_customer": "$89.98",
+    "avg_customer_lifetime_value": "$2103.97",
+    "high_risk_segments": [
+      "Month-to-month contracts",
+      "Electronic check payment method",
+      "No online security services",
+      "Senior citizens with short tenure"
+    ]
+  },
+  "expected_ml_performance": {
+    "baseline_accuracy": "73-76%",
+    "expected_advanced_model_accuracy": "85-92%",
+    "key_predictive_features": [
+      "Tenure",
+      "Contract",
+      "MonthlyCharges",
+      "PaymentMethod",
+      "InternetService"
+    ]
+  }
+}

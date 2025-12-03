@@ -1,0 +1,116 @@
+{
+  "dataset_info": {
+    "name": "Retail Sales Forecasting Dataset",
+    "description": "Comprehensive retail sales data for autonomous ML pipeline demonstration. This is the PRIMARY use case for ADPA.",
+    "size": [
+      3650,
+      19
+    ],
+    "target_variable": "DailySales",
+    "problem_type": "Time Series Forecasting / Regression",
+    "business_context": "Predict daily sales to optimize inventory management, staffing, and promotional planning"
+  },
+  "data_characteristics": {
+    "total_records": 3650,
+    "n_stores": 10,
+    "n_days": 365,
+    "date_range": "2023-01-01 to 2023-12-31",
+    "total_sales": "$68,235,760.70",
+    "avg_daily_sales_per_store": "$18,694.73",
+    "missing_data_percentage": "5.2%",
+    "numeric_features": [
+      "DailySales",
+      "Transactions",
+      "AvgTransactionValue",
+      "FootTraffic",
+      "InventoryLevel",
+      "StockoutEvents",
+      "IsPromotion",
+      "MarketingSpend",
+      "Temperature",
+      "CompetitorPriceIndex",
+      "DayOfWeek",
+      "Month",
+      "Quarter",
+      "IsWeekend",
+      "IsHolidaySeason"
+    ],
+    "categorical_features": [
+      "StoreID",
+      "StoreSize",
+      "Region"
+    ]
+  },
+  "feature_descriptions": {
+    "StoreID": "Unique identifier for each retail store",
+    "Date": "Date of the sales record",
+    "DailySales": "Total daily sales revenue in USD (TARGET)",
+    "Transactions": "Number of transactions that day",
+    "AvgTransactionValue": "Average value per transaction",
+    "FootTraffic": "Estimated customer foot traffic",
+    "InventoryLevel": "Stock level as percentage (0-1)",
+    "StockoutEvents": "Number of stockout occurrences",
+    "IsPromotion": "Whether a promotion was active (0/1)",
+    "MarketingSpend": "Marketing expenditure that day",
+    "Temperature": "Local temperature in Fahrenheit",
+    "CompetitorPriceIndex": "Relative competitor pricing (1.0 = parity)",
+    "DayOfWeek": "Day of week (0=Monday, 6=Sunday)",
+    "Month": "Month of the year (1-12)",
+    "Quarter": "Quarter of the year (1-4)",
+    "IsWeekend": "Weekend indicator (0/1)",
+    "IsHolidaySeason": "Holiday season indicator (Nov-Dec)",
+    "StoreSize": "Store size category (Small/Medium/Large)",
+    "Region": "Geographic region of the store"
+  },
+  "business_insights": {
+    "key_patterns": [
+      "Strong weekend sales boost (+30% on average)",
+      "Holiday season (Nov-Dec) shows 50% sales increase",
+      "Post-holiday January shows 30% decline",
+      "Promotions drive 35% sales uplift",
+      "Weather extremes reduce foot traffic 10-15%"
+    ],
+    "high_value_segments": [
+      "Large stores during holiday season",
+      "Weekend promotions",
+      "Optimal weather days (55-75\u00b0F)"
+    ]
+  },
+  "expected_ml_performance": {
+    "baseline_mae": "1500-2000",
+    "expected_advanced_model_mae": "800-1200",
+    "baseline_mape": "15-20%",
+    "expected_advanced_model_mape": "8-12%",
+    "key_predictive_features": [
+      "IsHolidaySeason",
+      "IsWeekend",
+      "IsPromotion",
+      "StoreSize",
+      "InventoryLevel",
+      "FootTraffic"
+    ],
+    "recommended_models": [
+      "XGBoost/LightGBM for tabular approach",
+      "Prophet for time series decomposition",
+      "LSTM for sequence modeling",
+      "Ensemble of multiple approaches"
+    ]
+  },
+  "adpa_demonstration": {
+    "autonomous_capabilities": [
+      "Automatic schema detection and data profiling",
+      "Intelligent missing value imputation",
+      "Automated feature engineering (lag features, rolling averages)",
+      "Model selection and hyperparameter optimization",
+      "Performance monitoring and model retraining triggers"
+    ],
+    "pipeline_steps": [
+      "Data Ingestion \u2192 S3 Raw Bucket",
+      "Data Cleaning \u2192 AWS Glue ETL",
+      "Feature Engineering \u2192 AWS Glue + Lambda",
+      "Model Training \u2192 SageMaker",
+      "Model Evaluation \u2192 Lambda + CloudWatch",
+      "Monitoring \u2192 CloudWatch Dashboards"
+    ]
+  }
+}

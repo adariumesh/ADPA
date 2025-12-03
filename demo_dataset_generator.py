@@ -94,7 +94,8 @@ class ADPADemoDatasetGenerator:
                                          n_customers, p=[0.35, 0.15, 0.25, 0.25])
         
         # Paperless billing correlation with payment method
-        paperless_billing = np.where(payment_methods.isin(['Bank transfer (automatic)', 'Credit card (automatic)']),
+        automatic_payment = np.isin(payment_methods, ['Bank transfer (automatic)', 'Credit card (automatic)'])
+        paperless_billing = np.where(automatic_payment,
                                     np.random.choice(['Yes', 'No'], n_customers, p=[0.8, 0.2]),
                                     np.random.choice(['Yes', 'No'], n_customers, p=[0.5, 0.5]))
         
@@ -290,11 +291,11 @@ class ADPADemoDatasetGenerator:
         
         # Additional features
         transaction_hours = np.random.randint(0, 24, n_transactions)
-        # Fraud more likely at odd hours
-        fraud_hours = np.where(fraud_labels == 1, 
-                             np.random.choice([0, 1, 2, 3, 22, 23], len(fraud_labels[fraud_labels == 1])),
-                             transaction_hours[fraud_labels == 1])
-        transaction_hours[fraud_labels == 1] = fraud_hours
+        # Fraud more likely at odd hours - fix the array assignment
+        fraud_mask = fraud_labels == 1
+        n_fraud = int(fraud_mask.sum())
+        if n_fraud > 0:
+            transaction_hours[fraud_mask] = np.random.choice([0, 1, 2, 3, 22, 23], n_fraud)
         
         merchant_categories = np.random.choice(['grocery', 'gas_station', 'restaurant', 'online', 'retail'], n_transactions)
         customer_ages = np.random.normal(40, 15, n_transactions).clip(18, 90).astype(int)
@@ -341,6 +342,251 @@ class ADPADemoDatasetGenerator:
             "metadata": metadata,
             "generation_timestamp": datetime.now().isoformat()
         }
+    
+    def create_retail_sales_forecasting_dataset(self, n_stores: int = 10, n_days: int = 365) -> Dict[str, Any]:
+        """
+        Create comprehensive retail sales forecasting dataset.
+        This is the PRIMARY demonstration use case for ADPA as described in the progress report.
+        
+        Args:
+            n_stores: Number of retail stores
+            n_days: Number of days of historical data
+            
+        Returns:
+            Dictionary containing dataset, metadata, and business context
+        """
+        print(f"🔄 Generating retail sales forecasting dataset for {n_stores} stores over {n_days} days...")
+        
+        records = []
+        
+        # Generate data for each store
+        for store_id in range(1, n_stores + 1):
+            # Store-specific characteristics
+            store_size = np.random.choice(['Small', 'Medium', 'Large'], p=[0.3, 0.5, 0.2])
+            store_region = np.random.choice(['Northeast', 'Southeast', 'Midwest', 'West', 'Southwest'])
+            base_sales = {'Small': 5000, 'Medium': 12000, 'Large': 25000}[store_size]
+            
+            start_date = datetime(2023, 1, 1)
+            
+            for day in range(n_days):
+                current_date = start_date + timedelta(days=day)
+                day_of_year = current_date.timetuple().tm_yday
+                day_of_week = current_date.weekday()
+                month = current_date.month
+                
+                # Seasonal factor (higher in Q4 for retail)
+                if month in [11, 12]:  # Holiday season
+                    seasonal_factor = 1.5 + np.random.uniform(0, 0.3)
+                elif month in [1, 2]:  # Post-holiday slump
+                    seasonal_factor = 0.7 + np.random.uniform(0, 0.1)
+                elif month in [6, 7, 8]:  # Summer sales
+                    seasonal_factor = 1.1 + np.random.uniform(0, 0.15)
+                else:
+                    seasonal_factor = 1.0 + np.random.uniform(-0.1, 0.1)
+                
+                # Weekly pattern (weekends higher)
+                if day_of_week >= 5:  # Weekend
+                    weekly_factor = 1.3 + np.random.uniform(0, 0.2)
+                elif day_of_week == 0:  # Monday typically lower
+                    weekly_factor = 0.85 + np.random.uniform(0, 0.1)
+                else:
+                    weekly_factor = 1.0 + np.random.uniform(-0.05, 0.05)
+                
+                # Promotions (random events)
+                is_promotion = np.random.binomial(1, 0.15)
+                promotion_factor = 1.35 if is_promotion else 1.0
+                
+                # Weather impact (simplified)
+                temperature = 50 + 30 * np.sin(2 * np.pi * day_of_year / 365) + np.random.normal(0, 10)
+                weather_factor = 1.0
+                if temperature < 32:  # Very cold
+                    weather_factor = 0.85
+                elif temperature > 90:  # Very hot
+                    weather_factor = 0.9
+                
+                # Calculate daily sales
+                daily_sales = base_sales * seasonal_factor * weekly_factor * promotion_factor * weather_factor
+                daily_sales += np.random.normal(0, base_sales * 0.1)  # Random noise
+                daily_sales = max(daily_sales, 0)
+                
+                # Calculate related metrics
+                transactions = int(daily_sales / np.random.uniform(35, 55))
+                avg_transaction_value = daily_sales / max(transactions, 1)
+                
+                # Inventory and stock levels
+                inventory_level = np.random.uniform(0.3, 1.0)  # 30-100% stocked
+                stockout_events = 1 if inventory_level < 0.4 else 0
+                
+                # Customer foot traffic
+                foot_traffic = int(transactions * np.random.uniform(2.5, 4.0))
+                
+                # Marketing spend correlation
+                marketing_spend = np.random.exponential(200) if is_promotion else np.random.exponential(50)
+                
+                # Competitor pricing (relative index)
+                competitor_price_index = np.random.uniform(0.9, 1.1)
+                
+                records.append({
+                    'StoreID': f"STORE_{store_id:03d}",
+                    'Date': current_date.strftime('%Y-%m-%d'),
+                    'DailySales': round(daily_sales, 2),
+                    'Transactions': transactions,
+                    'AvgTransactionValue': round(avg_transaction_value, 2),
+                    'FootTraffic': foot_traffic,
+                    'InventoryLevel': round(inventory_level, 2),
+                    'StockoutEvents': stockout_events,
+                    'IsPromotion': is_promotion,
+                    'MarketingSpend': round(marketing_spend, 2),
+                    'Temperature': round(temperature, 1),
+                    'CompetitorPriceIndex': round(competitor_price_index, 3),
+                    'DayOfWeek': day_of_week,
+                    'Month': month,
+                    'Quarter': (month - 1) // 3 + 1,
+                    'IsWeekend': 1 if day_of_week >= 5 else 0,
+                    'IsHolidaySeason': 1 if month in [11, 12] else 0,
+                    'StoreSize': store_size,
+                    'Region': store_region
+                })
+        
+        df = pd.DataFrame(records)
+        
+        # Add realistic missing values (simulating data collection issues)
+        df = self._add_retail_missing_values(df, missing_ratio=0.12)
+        
+        # Calculate summary statistics
+        total_sales = df['DailySales'].sum()
+        avg_daily_sales = df['DailySales'].mean()
+        
+        metadata = {
+            "dataset_info": {
+                "name": "Retail Sales Forecasting Dataset",
+                "description": "Comprehensive retail sales data for autonomous ML pipeline demonstration. This is the PRIMARY use case for ADPA.",
+                "size": list(df.shape),
+                "target_variable": "DailySales",
+                "problem_type": "Time Series Forecasting / Regression",
+                "business_context": "Predict daily sales to optimize inventory management, staffing, and promotional planning"
+            },
+            "data_characteristics": {
+                "total_records": len(df),
+                "n_stores": n_stores,
+                "n_days": n_days,
+                "date_range": f"{df['Date'].min()} to {df['Date'].max()}",
+                "total_sales": f"${total_sales:,.2f}",
+                "avg_daily_sales_per_store": f"${avg_daily_sales:,.2f}",
+                "missing_data_percentage": f"{df.isnull().sum().sum() / (df.shape[0] * df.shape[1]):.1%}",
+                "numeric_features": df.select_dtypes(include=[np.number]).columns.tolist(),
+                "categorical_features": ['StoreID', 'StoreSize', 'Region']
+            },
+            "feature_descriptions": {
+                "StoreID": "Unique identifier for each retail store",
+                "Date": "Date of the sales record",
+                "DailySales": "Total daily sales revenue in USD (TARGET)",
+                "Transactions": "Number of transactions that day",
+                "AvgTransactionValue": "Average value per transaction",
+                "FootTraffic": "Estimated customer foot traffic",
+                "InventoryLevel": "Stock level as percentage (0-1)",
+                "StockoutEvents": "Number of stockout occurrences",
+                "IsPromotion": "Whether a promotion was active (0/1)",
+                "MarketingSpend": "Marketing expenditure that day",
+                "Temperature": "Local temperature in Fahrenheit",
+                "CompetitorPriceIndex": "Relative competitor pricing (1.0 = parity)",
+                "DayOfWeek": "Day of week (0=Monday, 6=Sunday)",
+                "Month": "Month of the year (1-12)",
+                "Quarter": "Quarter of the year (1-4)",
+                "IsWeekend": "Weekend indicator (0/1)",
+                "IsHolidaySeason": "Holiday season indicator (Nov-Dec)",
+                "StoreSize": "Store size category (Small/Medium/Large)",
+                "Region": "Geographic region of the store"
+            },
+            "business_insights": {
+                "key_patterns": [
+                    "Strong weekend sales boost (+30% on average)",
+                    "Holiday season (Nov-Dec) shows 50% sales increase",
+                    "Post-holiday January shows 30% decline",
+                    "Promotions drive 35% sales uplift",
+                    "Weather extremes reduce foot traffic 10-15%"
+                ],
+                "high_value_segments": [
+                    "Large stores during holiday season",
+                    "Weekend promotions",
+                    "Optimal weather days (55-75°F)"
+                ]
+            },
+            "expected_ml_performance": {
+                "baseline_mae": "1500-2000",
+                "expected_advanced_model_mae": "800-1200",
+                "baseline_mape": "15-20%",
+                "expected_advanced_model_mape": "8-12%",
+                "key_predictive_features": [
+                    "IsHolidaySeason",
+                    "IsWeekend", 
+                    "IsPromotion",
+                    "StoreSize",
+                    "InventoryLevel",
+                    "FootTraffic"
+                ],
+                "recommended_models": [
+                    "XGBoost/LightGBM for tabular approach",
+                    "Prophet for time series decomposition",
+                    "LSTM for sequence modeling",
+                    "Ensemble of multiple approaches"
+                ]
+            },
+            "adpa_demonstration": {
+                "autonomous_capabilities": [
+                    "Automatic schema detection and data profiling",
+                    "Intelligent missing value imputation",
+                    "Automated feature engineering (lag features, rolling averages)",
+                    "Model selection and hyperparameter optimization",
+                    "Performance monitoring and model retraining triggers"
+                ],
+                "pipeline_steps": [
+                    "Data Ingestion → S3 Raw Bucket",
+                    "Data Cleaning → AWS Glue ETL",
+                    "Feature Engineering → AWS Glue + Lambda",
+                    "Model Training → SageMaker",
+                    "Model Evaluation → Lambda + CloudWatch",
+                    "Monitoring → CloudWatch Dashboards"
+                ]
+            }
+        }
+        
+        print(f"✅ Generated retail sales dataset: {df.shape[0]} records, {df.shape[1]} features")
+        print(f"📊 Total Sales: ${total_sales:,.2f}")
+        print(f"📅 Date Range: {df['Date'].min()} to {df['Date'].max()}")
+        print(f"🏪 Stores: {n_stores}")
+        print(f"🔍 Missing data: {df.isnull().sum().sum() / (df.shape[0] * df.shape[1]):.1%}")
+        
+        return {
+            "dataset": df,
+            "metadata": metadata,
+            "generation_timestamp": datetime.now().isoformat()
+        }
+    
+    def _add_retail_missing_values(self, df: pd.DataFrame, missing_ratio: float = 0.12) -> pd.DataFrame:
+        """Add realistic missing values to the retail dataset."""
+        df_with_missing = df.copy()
+        
+        # Columns with higher missing rates (sensor/measurement data)
+        high_missing_cols = ['Temperature', 'FootTraffic', 'CompetitorPriceIndex']
+        medium_missing_cols = ['InventoryLevel', 'MarketingSpend']
+        
+        for col in df.columns:
+            if col in high_missing_cols:
+                missing_prob = missing_ratio * 1.5
+            elif col in medium_missing_cols:
+                missing_prob = missing_ratio
+            else:
+                missing_prob = missing_ratio * 0.3
+            
+            # Don't add missing values to critical columns
+            if col in ['StoreID', 'Date', 'DailySales', 'DayOfWeek', 'Month', 'Quarter', 'IsWeekend', 'IsHolidaySeason']:
+                continue
+            
+            missing_mask = np.random.random(len(df)) < missing_prob
+            df_with_missing.loc[missing_mask, col] = np.nan
+        
+        return df_with_missing
     
     def _calculate_churn_probability(self, ages, tenure_months, monthly_charges, contract_types,
                                    internet_service, payment_methods, senior_citizen):
@@ -434,6 +680,7 @@ def generate_all_demo_datasets():
     
     # Generate datasets
     datasets = {
+        "retail_sales_forecasting": generator.create_retail_sales_forecasting_dataset(n_stores=10, n_days=365),
         "customer_churn": generator.create_customer_churn_dataset(1500),
         "sales_forecasting": generator.create_sales_forecasting_dataset(2000),
         "fraud_detection": generator.create_fraud_detection_dataset(1200)
