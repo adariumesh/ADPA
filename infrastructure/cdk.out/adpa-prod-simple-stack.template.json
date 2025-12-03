@@ -1,0 +1,1913 @@
+{
+ "Description": "ADPA Production Stack - Simplified Enterprise Deployment",
+ "Resources": {
+  "DataBucketE3889A50": {
+   "Type": "AWS::S3::Bucket",
+   "Properties": {
+    "BucketEncryption": {
+     "ServerSideEncryptionConfiguration": [
+      {
+       "ServerSideEncryptionByDefault": {
+        "SSEAlgorithm": "AES256"
+       }
+      }
+     ]
+    },
+    "BucketName": "adpa-prod-data-083308938449",
+    "PublicAccessBlockConfiguration": {
+     "BlockPublicAcls": true,
+     "BlockPublicPolicy": true,
+     "IgnorePublicAcls": true,
+     "RestrictPublicBuckets": true
+    },
+    "VersioningConfiguration": {
+     "Status": "Enabled"
+    }
+   },
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain",
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/DataBucket/Resource"
+   }
+  },
+  "ModelsBucketA3610ED4": {
+   "Type": "AWS::S3::Bucket",
+   "Properties": {
+    "BucketEncryption": {
+     "ServerSideEncryptionConfiguration": [
+      {
+       "ServerSideEncryptionByDefault": {
+        "SSEAlgorithm": "AES256"
+       }
+      }
+     ]
+    },
+    "BucketName": "adpa-prod-models-083308938449",
+    "PublicAccessBlockConfiguration": {
+     "BlockPublicAcls": true,
+     "BlockPublicPolicy": true,
+     "IgnorePublicAcls": true,
+     "RestrictPublicBuckets": true
+    },
+    "VersioningConfiguration": {
+     "Status": "Enabled"
+    }
+   },
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain",
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/ModelsBucket/Resource"
+   }
+  },
+  "PipelinesTable2D06D7D8": {
+   "Type": "AWS::DynamoDB::Table",
+   "Properties": {
+    "KeySchema": [
+     {
+      "AttributeName": "pipeline_id",
+      "KeyType": "HASH"
+     },
+     {
+      "AttributeName": "timestamp",
+      "KeyType": "RANGE"
+     }
+    ],
+    "AttributeDefinitions": [
+     {
+      "AttributeName": "pipeline_id",
+      "AttributeType": "S"
+     },
+     {
+      "AttributeName": "timestamp",
+      "AttributeType": "N"
+     }
+    ],
+    "BillingMode": "PAY_PER_REQUEST",
+    "PointInTimeRecoverySpecification": {
+     "PointInTimeRecoveryEnabled": true
+    },
+    "SSESpecification": {
+     "SSEEnabled": true
+    },
+    "TableName": "adpa-prod-pipelines"
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/PipelinesTable/Resource"
+   }
+  },
+  "LambdaExecutionRoleD5C26073": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "lambda.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+       ]
+      ]
+     },
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/AWSXRayDaemonWriteAccess"
+       ]
+      ]
+     }
+    ],
+    "Policies": [
+     {
+      "PolicyDocument": {
+       "Statement": [
+        {
+         "Action": [
+          "dynamodb:DeleteItem",
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:Query",
+          "dynamodb:Scan",
+          "dynamodb:UpdateItem"
+         ],
+         "Effect": "Allow",
+         "Resource": [
+          {
+           "Fn::GetAtt": [
+            "PipelinesTable2D06D7D8",
+            "Arn"
+           ]
+          },
+          {
+           "Fn::Join": [
+            "",
+            [
+             {
+              "Fn::GetAtt": [
+               "PipelinesTable2D06D7D8",
+               "Arn"
+              ]
+             },
+             "/index/*"
+            ]
+           ]
+          }
+         ]
+        }
+       ],
+       "Version": "2012-10-17"
+      },
+      "PolicyName": "DynamoDBAccess"
+     },
+     {
+      "PolicyDocument": {
+       "Statement": [
+        {
+         "Action": [
+          "s3:DeleteObject",
+          "s3:GetObject",
+          "s3:ListBucket",
+          "s3:PutObject"
+         ],
+         "Effect": "Allow",
+         "Resource": [
+          {
+           "Fn::GetAtt": [
+            "DataBucketE3889A50",
+            "Arn"
+           ]
+          },
+          {
+           "Fn::GetAtt": [
+            "ModelsBucketA3610ED4",
+            "Arn"
+           ]
+          },
+          {
+           "Fn::Join": [
+            "",
+            [
+             {
+              "Fn::GetAtt": [
+               "DataBucketE3889A50",
+               "Arn"
+              ]
+             },
+             "/*"
+            ]
+           ]
+          },
+          {
+           "Fn::Join": [
+            "",
+            [
+             {
+              "Fn::GetAtt": [
+               "ModelsBucketA3610ED4",
+               "Arn"
+              ]
+             },
+             "/*"
+            ]
+           ]
+          }
+         ]
+        }
+       ],
+       "Version": "2012-10-17"
+      },
+      "PolicyName": "S3Access"
+     },
+     {
+      "PolicyDocument": {
+       "Statement": [
+        {
+         "Action": [
+          "states:DescribeExecution",
+          "states:StartExecution"
+         ],
+         "Effect": "Allow",
+         "Resource": "arn:aws:states:us-east-2:083308938449:stateMachine:adpa-prod-*"
+        }
+       ],
+       "Version": "2012-10-17"
+      },
+      "PolicyName": "StepFunctionsAccess"
+     }
+    ],
+    "RoleName": "adpa-prod-lambda-execution-role"
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/LambdaExecutionRole/Resource"
+   }
+  },
+  "LambdaExecutionRoleDefaultPolicy6D69732F": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "xray:PutTelemetryRecords",
+        "xray:PutTraceSegments"
+       ],
+       "Effect": "Allow",
+       "Resource": "*"
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "LambdaExecutionRoleDefaultPolicy6D69732F",
+    "Roles": [
+     {
+      "Ref": "LambdaExecutionRoleD5C26073"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/LambdaExecutionRole/DefaultPolicy/Resource"
+   }
+  },
+  "ApiFunctionCE271BD4": {
+   "Type": "AWS::Lambda::Function",
+   "Properties": {
+    "Code": {
+     "S3Bucket": "cdk-hnb659fds-assets-083308938449-us-east-2",
+     "S3Key": "d78df0b6f32d9344ce309063db171532e5d4dc8cc381cd323ee6a20e05d90a1b.zip"
+    },
+    "Role": {
+     "Fn::GetAtt": [
+      "LambdaExecutionRoleD5C26073",
+      "Arn"
+     ]
+    },
+    "Environment": {
+     "Variables": {
+      "DATA_BUCKET": {
+       "Ref": "DataBucketE3889A50"
+      },
+      "MODEL_BUCKET": {
+       "Ref": "ModelsBucketA3610ED4"
+      },
+      "PIPELINES_TABLE": {
+       "Ref": "PipelinesTable2D06D7D8"
+      },
+      "ENVIRONMENT": "prod",
+      "STATE_MACHINE_ARN": "arn:aws:states:us-east-2:083308938449:stateMachine:adpa-prod-ml-pipeline-workflow"
+     }
+    },
+    "FunctionName": "adpa-prod-lambda-function-v2",
+    "Handler": "complete_api_handler.lambda_handler",
+    "MemorySize": 1024,
+    "Runtime": "python3.9",
+    "Timeout": 900,
+    "TracingConfig": {
+     "Mode": "Active"
+    }
+   },
+   "DependsOn": [
+    "LambdaExecutionRoleDefaultPolicy6D69732F",
+    "LambdaExecutionRoleD5C26073"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/ApiFunction/Resource",
+    "aws:asset:path": "asset.d78df0b6f32d9344ce309063db171532e5d4dc8cc381cd323ee6a20e05d90a1b",
+    "aws:asset:is-bundled": false,
+    "aws:asset:property": "Code"
+   }
+  },
+  "AdpaApi6B324C73": {
+   "Type": "AWS::ApiGateway::RestApi",
+   "Properties": {
+    "Description": "ADPA Production API v2 - Enterprise Grade",
+    "Name": "adpa-prod-api-v2"
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Resource"
+   }
+  },
+  "AdpaApiCloudWatchRole133BC486": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "apigateway.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "ManagedPolicyArns": [
+     {
+      "Fn::Join": [
+       "",
+       [
+        "arn:",
+        {
+         "Ref": "AWS::Partition"
+        },
+        ":iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
+       ]
+      ]
+     }
+    ]
+   },
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain",
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/CloudWatchRole/Resource"
+   }
+  },
+  "AdpaApiAccount3DB9C77C": {
+   "Type": "AWS::ApiGateway::Account",
+   "Properties": {
+    "CloudWatchRoleArn": {
+     "Fn::GetAtt": [
+      "AdpaApiCloudWatchRole133BC486",
+      "Arn"
+     ]
+    }
+   },
+   "DependsOn": [
+    "AdpaApi6B324C73"
+   ],
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain",
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Account"
+   }
+  },
+  "AdpaApiDeploymentA0A833B201e5aa3611db7073cb519f5e893aec2f": {
+   "Type": "AWS::ApiGateway::Deployment",
+   "Properties": {
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    },
+    "Description": "ADPA Production API v2 - Enterprise Grade"
+   },
+   "DependsOn": [
+    "AdpaApidataOPTIONSA552F2ED",
+    "AdpaApidataFBCD020E",
+    "AdpaApidatauploadOPTIONSE176797A",
+    "AdpaApidatauploadPOST27FA4DC8",
+    "AdpaApidatauploadF6D179A1",
+    "AdpaApidatauploadsGET8997C171",
+    "AdpaApidatauploadsOPTIONS5BEE4EE8",
+    "AdpaApidatauploads78D68091",
+    "AdpaApihealthGET8394F3FE",
+    "AdpaApihealthOPTIONS602031BD",
+    "AdpaApihealthCCDE7D68",
+    "AdpaApiOPTIONS5F2876C5",
+    "AdpaApipipelinesidexecuteOPTIONS650497E1",
+    "AdpaApipipelinesidexecutePOST4C0A7E5E",
+    "AdpaApipipelinesidexecuteD7492960",
+    "AdpaApipipelinesidGET5E49D8CA",
+    "AdpaApipipelinesidOPTIONS544CE5E7",
+    "AdpaApipipelinesidC608376B",
+    "AdpaApipipelinesidstatusGETB6DC5705",
+    "AdpaApipipelinesidstatusOPTIONS91C11947",
+    "AdpaApipipelinesidstatus6DC20917",
+    "AdpaApipipelinesGETD093A871",
+    "AdpaApipipelinesOPTIONSA68854A9",
+    "AdpaApipipelinesPOST2D5ADAE7",
+    "AdpaApipipelines40568CA0"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Deployment/Resource"
+   }
+  },
+  "AdpaApiDeploymentStageprod36FE90E0": {
+   "Type": "AWS::ApiGateway::Stage",
+   "Properties": {
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    },
+    "DeploymentId": {
+     "Ref": "AdpaApiDeploymentA0A833B201e5aa3611db7073cb519f5e893aec2f"
+    },
+    "MethodSettings": [
+     {
+      "DataTraceEnabled": true,
+      "HttpMethod": "*",
+      "LoggingLevel": "INFO",
+      "MetricsEnabled": true,
+      "ResourcePath": "/*"
+     }
+    ],
+    "StageName": "prod"
+   },
+   "DependsOn": [
+    "AdpaApiAccount3DB9C77C"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/DeploymentStage.prod/Resource"
+   }
+  },
+  "AdpaApiOPTIONS5F2876C5": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "HttpMethod": "OPTIONS",
+    "ResourceId": {
+     "Fn::GetAtt": [
+      "AdpaApi6B324C73",
+      "RootResourceId"
+     ]
+    },
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    },
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/OPTIONS/Resource"
+   }
+  },
+  "AdpaApihealthCCDE7D68": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Fn::GetAtt": [
+      "AdpaApi6B324C73",
+      "RootResourceId"
+     ]
+    },
+    "PathPart": "health",
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/health/Resource"
+   }
+  },
+  "AdpaApihealthOPTIONS602031BD": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "HttpMethod": "OPTIONS",
+    "ResourceId": {
+     "Ref": "AdpaApihealthCCDE7D68"
+    },
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    },
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/health/OPTIONS/Resource"
+   }
+  },
+  "AdpaApihealthGETApiPermissionadpaprodsimplestackAdpaApiF340B6D5GEThealth4BB77DFB": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "ApiFunctionCE271BD4",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:aws:execute-api:us-east-2:083308938449:",
+       {
+        "Ref": "AdpaApi6B324C73"
+       },
+       "/",
+       {
+        "Ref": "AdpaApiDeploymentStageprod36FE90E0"
+       },
+       "/GET/health"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/health/GET/ApiPermission.adpaprodsimplestackAdpaApiF340B6D5.GET..health"
+   }
+  },
+  "AdpaApihealthGETApiPermissionTestadpaprodsimplestackAdpaApiF340B6D5GEThealthD7EB2223": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "ApiFunctionCE271BD4",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:aws:execute-api:us-east-2:083308938449:",
+       {
+        "Ref": "AdpaApi6B324C73"
+       },
+       "/test-invoke-stage/GET/health"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/health/GET/ApiPermission.Test.adpaprodsimplestackAdpaApiF340B6D5.GET..health"
+   }
+  },
+  "AdpaApihealthGET8394F3FE": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "HttpMethod": "GET",
+    "ResourceId": {
+     "Ref": "AdpaApihealthCCDE7D68"
+    },
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    },
+    "AuthorizationType": "NONE",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::GetAtt": [
+          "ApiFunctionCE271BD4",
+          "Arn"
+         ]
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/health/GET/Resource"
+   }
+  },
+  "AdpaApipipelines40568CA0": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Fn::GetAtt": [
+      "AdpaApi6B324C73",
+      "RootResourceId"
+     ]
+    },
+    "PathPart": "pipelines",
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/pipelines/Resource"
+   }
+  },
+  "AdpaApipipelinesOPTIONSA68854A9": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "HttpMethod": "OPTIONS",
+    "ResourceId": {
+     "Ref": "AdpaApipipelines40568CA0"
+    },
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    },
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/pipelines/OPTIONS/Resource"
+   }
+  },
+  "AdpaApipipelinesGETApiPermissionadpaprodsimplestackAdpaApiF340B6D5GETpipelinesDC504ADA": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "ApiFunctionCE271BD4",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:aws:execute-api:us-east-2:083308938449:",
+       {
+        "Ref": "AdpaApi6B324C73"
+       },
+       "/",
+       {
+        "Ref": "AdpaApiDeploymentStageprod36FE90E0"
+       },
+       "/GET/pipelines"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/pipelines/GET/ApiPermission.adpaprodsimplestackAdpaApiF340B6D5.GET..pipelines"
+   }
+  },
+  "AdpaApipipelinesGETApiPermissionTestadpaprodsimplestackAdpaApiF340B6D5GETpipelinesD3381A6A": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "ApiFunctionCE271BD4",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:aws:execute-api:us-east-2:083308938449:",
+       {
+        "Ref": "AdpaApi6B324C73"
+       },
+       "/test-invoke-stage/GET/pipelines"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/pipelines/GET/ApiPermission.Test.adpaprodsimplestackAdpaApiF340B6D5.GET..pipelines"
+   }
+  },
+  "AdpaApipipelinesGETD093A871": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "HttpMethod": "GET",
+    "ResourceId": {
+     "Ref": "AdpaApipipelines40568CA0"
+    },
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    },
+    "AuthorizationType": "NONE",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::GetAtt": [
+          "ApiFunctionCE271BD4",
+          "Arn"
+         ]
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/pipelines/GET/Resource"
+   }
+  },
+  "AdpaApipipelinesPOSTApiPermissionadpaprodsimplestackAdpaApiF340B6D5POSTpipelinesDC727C95": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "ApiFunctionCE271BD4",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:aws:execute-api:us-east-2:083308938449:",
+       {
+        "Ref": "AdpaApi6B324C73"
+       },
+       "/",
+       {
+        "Ref": "AdpaApiDeploymentStageprod36FE90E0"
+       },
+       "/POST/pipelines"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/pipelines/POST/ApiPermission.adpaprodsimplestackAdpaApiF340B6D5.POST..pipelines"
+   }
+  },
+  "AdpaApipipelinesPOSTApiPermissionTestadpaprodsimplestackAdpaApiF340B6D5POSTpipelinesED555BB5": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "ApiFunctionCE271BD4",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:aws:execute-api:us-east-2:083308938449:",
+       {
+        "Ref": "AdpaApi6B324C73"
+       },
+       "/test-invoke-stage/POST/pipelines"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/pipelines/POST/ApiPermission.Test.adpaprodsimplestackAdpaApiF340B6D5.POST..pipelines"
+   }
+  },
+  "AdpaApipipelinesPOST2D5ADAE7": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "HttpMethod": "POST",
+    "ResourceId": {
+     "Ref": "AdpaApipipelines40568CA0"
+    },
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    },
+    "AuthorizationType": "NONE",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::GetAtt": [
+          "ApiFunctionCE271BD4",
+          "Arn"
+         ]
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/pipelines/POST/Resource"
+   }
+  },
+  "AdpaApipipelinesidC608376B": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Ref": "AdpaApipipelines40568CA0"
+    },
+    "PathPart": "{id}",
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/Resource"
+   }
+  },
+  "AdpaApipipelinesidOPTIONS544CE5E7": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "HttpMethod": "OPTIONS",
+    "ResourceId": {
+     "Ref": "AdpaApipipelinesidC608376B"
+    },
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    },
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/OPTIONS/Resource"
+   }
+  },
+  "AdpaApipipelinesidGETApiPermissionadpaprodsimplestackAdpaApiF340B6D5GETpipelinesid510CCF2D": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "ApiFunctionCE271BD4",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:aws:execute-api:us-east-2:083308938449:",
+       {
+        "Ref": "AdpaApi6B324C73"
+       },
+       "/",
+       {
+        "Ref": "AdpaApiDeploymentStageprod36FE90E0"
+       },
+       "/GET/pipelines/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/GET/ApiPermission.adpaprodsimplestackAdpaApiF340B6D5.GET..pipelines.{id}"
+   }
+  },
+  "AdpaApipipelinesidGETApiPermissionTestadpaprodsimplestackAdpaApiF340B6D5GETpipelinesid93735FA3": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "ApiFunctionCE271BD4",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:aws:execute-api:us-east-2:083308938449:",
+       {
+        "Ref": "AdpaApi6B324C73"
+       },
+       "/test-invoke-stage/GET/pipelines/*"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/GET/ApiPermission.Test.adpaprodsimplestackAdpaApiF340B6D5.GET..pipelines.{id}"
+   }
+  },
+  "AdpaApipipelinesidGET5E49D8CA": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "HttpMethod": "GET",
+    "ResourceId": {
+     "Ref": "AdpaApipipelinesidC608376B"
+    },
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    },
+    "AuthorizationType": "NONE",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::GetAtt": [
+          "ApiFunctionCE271BD4",
+          "Arn"
+         ]
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/GET/Resource"
+   }
+  },
+  "AdpaApipipelinesidexecuteD7492960": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Ref": "AdpaApipipelinesidC608376B"
+    },
+    "PathPart": "execute",
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/execute/Resource"
+   }
+  },
+  "AdpaApipipelinesidexecuteOPTIONS650497E1": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "HttpMethod": "OPTIONS",
+    "ResourceId": {
+     "Ref": "AdpaApipipelinesidexecuteD7492960"
+    },
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    },
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/execute/OPTIONS/Resource"
+   }
+  },
+  "AdpaApipipelinesidexecutePOSTApiPermissionadpaprodsimplestackAdpaApiF340B6D5POSTpipelinesidexecute72F72398": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "ApiFunctionCE271BD4",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:aws:execute-api:us-east-2:083308938449:",
+       {
+        "Ref": "AdpaApi6B324C73"
+       },
+       "/",
+       {
+        "Ref": "AdpaApiDeploymentStageprod36FE90E0"
+       },
+       "/POST/pipelines/*/execute"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/execute/POST/ApiPermission.adpaprodsimplestackAdpaApiF340B6D5.POST..pipelines.{id}.execute"
+   }
+  },
+  "AdpaApipipelinesidexecutePOSTApiPermissionTestadpaprodsimplestackAdpaApiF340B6D5POSTpipelinesidexecute341888E6": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "ApiFunctionCE271BD4",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:aws:execute-api:us-east-2:083308938449:",
+       {
+        "Ref": "AdpaApi6B324C73"
+       },
+       "/test-invoke-stage/POST/pipelines/*/execute"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/execute/POST/ApiPermission.Test.adpaprodsimplestackAdpaApiF340B6D5.POST..pipelines.{id}.execute"
+   }
+  },
+  "AdpaApipipelinesidexecutePOST4C0A7E5E": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "HttpMethod": "POST",
+    "ResourceId": {
+     "Ref": "AdpaApipipelinesidexecuteD7492960"
+    },
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    },
+    "AuthorizationType": "NONE",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::GetAtt": [
+          "ApiFunctionCE271BD4",
+          "Arn"
+         ]
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/execute/POST/Resource"
+   }
+  },
+  "AdpaApipipelinesidstatus6DC20917": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Ref": "AdpaApipipelinesidC608376B"
+    },
+    "PathPart": "status",
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/status/Resource"
+   }
+  },
+  "AdpaApipipelinesidstatusOPTIONS91C11947": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "HttpMethod": "OPTIONS",
+    "ResourceId": {
+     "Ref": "AdpaApipipelinesidstatus6DC20917"
+    },
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    },
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/status/OPTIONS/Resource"
+   }
+  },
+  "AdpaApipipelinesidstatusGETApiPermissionadpaprodsimplestackAdpaApiF340B6D5GETpipelinesidstatus69BE248F": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "ApiFunctionCE271BD4",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:aws:execute-api:us-east-2:083308938449:",
+       {
+        "Ref": "AdpaApi6B324C73"
+       },
+       "/",
+       {
+        "Ref": "AdpaApiDeploymentStageprod36FE90E0"
+       },
+       "/GET/pipelines/*/status"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/status/GET/ApiPermission.adpaprodsimplestackAdpaApiF340B6D5.GET..pipelines.{id}.status"
+   }
+  },
+  "AdpaApipipelinesidstatusGETApiPermissionTestadpaprodsimplestackAdpaApiF340B6D5GETpipelinesidstatus8E909A4C": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "ApiFunctionCE271BD4",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:aws:execute-api:us-east-2:083308938449:",
+       {
+        "Ref": "AdpaApi6B324C73"
+       },
+       "/test-invoke-stage/GET/pipelines/*/status"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/status/GET/ApiPermission.Test.adpaprodsimplestackAdpaApiF340B6D5.GET..pipelines.{id}.status"
+   }
+  },
+  "AdpaApipipelinesidstatusGETB6DC5705": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "HttpMethod": "GET",
+    "ResourceId": {
+     "Ref": "AdpaApipipelinesidstatus6DC20917"
+    },
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    },
+    "AuthorizationType": "NONE",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::GetAtt": [
+          "ApiFunctionCE271BD4",
+          "Arn"
+         ]
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/status/GET/Resource"
+   }
+  },
+  "AdpaApidataFBCD020E": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Fn::GetAtt": [
+      "AdpaApi6B324C73",
+      "RootResourceId"
+     ]
+    },
+    "PathPart": "data",
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/data/Resource"
+   }
+  },
+  "AdpaApidataOPTIONSA552F2ED": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "HttpMethod": "OPTIONS",
+    "ResourceId": {
+     "Ref": "AdpaApidataFBCD020E"
+    },
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    },
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/data/OPTIONS/Resource"
+   }
+  },
+  "AdpaApidatauploadF6D179A1": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Ref": "AdpaApidataFBCD020E"
+    },
+    "PathPart": "upload",
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/data/upload/Resource"
+   }
+  },
+  "AdpaApidatauploadOPTIONSE176797A": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "HttpMethod": "OPTIONS",
+    "ResourceId": {
+     "Ref": "AdpaApidatauploadF6D179A1"
+    },
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    },
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/data/upload/OPTIONS/Resource"
+   }
+  },
+  "AdpaApidatauploadPOSTApiPermissionadpaprodsimplestackAdpaApiF340B6D5POSTdataupload95581A28": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "ApiFunctionCE271BD4",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:aws:execute-api:us-east-2:083308938449:",
+       {
+        "Ref": "AdpaApi6B324C73"
+       },
+       "/",
+       {
+        "Ref": "AdpaApiDeploymentStageprod36FE90E0"
+       },
+       "/POST/data/upload"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/data/upload/POST/ApiPermission.adpaprodsimplestackAdpaApiF340B6D5.POST..data.upload"
+   }
+  },
+  "AdpaApidatauploadPOSTApiPermissionTestadpaprodsimplestackAdpaApiF340B6D5POSTdataupload22EA44F5": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "ApiFunctionCE271BD4",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:aws:execute-api:us-east-2:083308938449:",
+       {
+        "Ref": "AdpaApi6B324C73"
+       },
+       "/test-invoke-stage/POST/data/upload"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/data/upload/POST/ApiPermission.Test.adpaprodsimplestackAdpaApiF340B6D5.POST..data.upload"
+   }
+  },
+  "AdpaApidatauploadPOST27FA4DC8": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "HttpMethod": "POST",
+    "ResourceId": {
+     "Ref": "AdpaApidatauploadF6D179A1"
+    },
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    },
+    "AuthorizationType": "NONE",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::GetAtt": [
+          "ApiFunctionCE271BD4",
+          "Arn"
+         ]
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/data/upload/POST/Resource"
+   }
+  },
+  "AdpaApidatauploads78D68091": {
+   "Type": "AWS::ApiGateway::Resource",
+   "Properties": {
+    "ParentId": {
+     "Ref": "AdpaApidataFBCD020E"
+    },
+    "PathPart": "uploads",
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/data/uploads/Resource"
+   }
+  },
+  "AdpaApidatauploadsOPTIONS5BEE4EE8": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "HttpMethod": "OPTIONS",
+    "ResourceId": {
+     "Ref": "AdpaApidatauploads78D68091"
+    },
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    },
+    "ApiKeyRequired": false,
+    "AuthorizationType": "NONE",
+    "Integration": {
+     "IntegrationResponses": [
+      {
+       "ResponseParameters": {
+        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
+       },
+       "StatusCode": "204"
+      }
+     ],
+     "RequestTemplates": {
+      "application/json": "{ statusCode: 200 }"
+     },
+     "Type": "MOCK"
+    },
+    "MethodResponses": [
+     {
+      "ResponseParameters": {
+       "method.response.header.Access-Control-Allow-Headers": true,
+       "method.response.header.Access-Control-Allow-Origin": true,
+       "method.response.header.Access-Control-Allow-Methods": true
+      },
+      "StatusCode": "204"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/data/uploads/OPTIONS/Resource"
+   }
+  },
+  "AdpaApidatauploadsGETApiPermissionadpaprodsimplestackAdpaApiF340B6D5GETdatauploads5505E8DF": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "ApiFunctionCE271BD4",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:aws:execute-api:us-east-2:083308938449:",
+       {
+        "Ref": "AdpaApi6B324C73"
+       },
+       "/",
+       {
+        "Ref": "AdpaApiDeploymentStageprod36FE90E0"
+       },
+       "/GET/data/uploads"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/data/uploads/GET/ApiPermission.adpaprodsimplestackAdpaApiF340B6D5.GET..data.uploads"
+   }
+  },
+  "AdpaApidatauploadsGETApiPermissionTestadpaprodsimplestackAdpaApiF340B6D5GETdatauploads5B70546C": {
+   "Type": "AWS::Lambda::Permission",
+   "Properties": {
+    "Action": "lambda:InvokeFunction",
+    "FunctionName": {
+     "Fn::GetAtt": [
+      "ApiFunctionCE271BD4",
+      "Arn"
+     ]
+    },
+    "Principal": "apigateway.amazonaws.com",
+    "SourceArn": {
+     "Fn::Join": [
+      "",
+      [
+       "arn:aws:execute-api:us-east-2:083308938449:",
+       {
+        "Ref": "AdpaApi6B324C73"
+       },
+       "/test-invoke-stage/GET/data/uploads"
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/data/uploads/GET/ApiPermission.Test.adpaprodsimplestackAdpaApiF340B6D5.GET..data.uploads"
+   }
+  },
+  "AdpaApidatauploadsGET8997C171": {
+   "Type": "AWS::ApiGateway::Method",
+   "Properties": {
+    "HttpMethod": "GET",
+    "ResourceId": {
+     "Ref": "AdpaApidatauploads78D68091"
+    },
+    "RestApiId": {
+     "Ref": "AdpaApi6B324C73"
+    },
+    "AuthorizationType": "NONE",
+    "Integration": {
+     "IntegrationHttpMethod": "POST",
+     "Type": "AWS_PROXY",
+     "Uri": {
+      "Fn::Join": [
+       "",
+       [
+        "arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/",
+        {
+         "Fn::GetAtt": [
+          "ApiFunctionCE271BD4",
+          "Arn"
+         ]
+        },
+        "/invocations"
+       ]
+      ]
+     }
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/AdpaApi/Default/data/uploads/GET/Resource"
+   }
+  },
+  "LambdaErrorAlarm646BFA4C": {
+   "Type": "AWS::CloudWatch::Alarm",
+   "Properties": {
+    "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+    "EvaluationPeriods": 2,
+    "AlarmDescription": "Lambda function error rate is too high",
+    "AlarmName": "adpa-prod-lambda-errors",
+    "Dimensions": [
+     {
+      "Name": "FunctionName",
+      "Value": {
+       "Ref": "ApiFunctionCE271BD4"
+      }
+     }
+    ],
+    "MetricName": "Errors",
+    "Namespace": "AWS/Lambda",
+    "Period": 300,
+    "Statistic": "Sum",
+    "Threshold": 5
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/LambdaErrorAlarm/Resource"
+   }
+  },
+  "ApiGateway4XXAlarm59D14AA2": {
+   "Type": "AWS::CloudWatch::Alarm",
+   "Properties": {
+    "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+    "EvaluationPeriods": 2,
+    "AlarmDescription": "API Gateway 4XX error rate is too high",
+    "AlarmName": "adpa-prod-api-4xx-errors",
+    "Dimensions": [
+     {
+      "Name": "ApiName",
+      "Value": "adpa-prod-api-v2"
+     }
+    ],
+    "MetricName": "4XXError",
+    "Namespace": "AWS/ApiGateway",
+    "Period": 300,
+    "Statistic": "Sum",
+    "Threshold": 20
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/ApiGateway4XXAlarm/Resource"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/1WRT0/DMAzFPwv3zMB2gGsH2g0xddwnNzFb1vyp6oSqivLdUdKhjdP7Oc/Js5U1vL7A0wNOvJKqXxndQToElL3AiY+JN5C2UfYUxNu3u9IiW2TKQs0OrVcdpC/sDJWuCllotJBav5xV3Xuj5VzKhbIwaDuFkHbRyaC9K94972m0mll7lwVvjshMgaEpInDQJww04QypJQ7NoGvSDRspfXRBvNNg/GzJ1SXuqkPAUx1vgZbYx1FS2Ux8UDh7Vcwr/bnXkMpZSOOjmjDIM6TG4GhrcIGcb1fqxCVEu1Np+IxhiOH/S84rggs//qzX8Fz+5MJar8bogrYE7aK/IW3MW68BAAA="
+   },
+   "Metadata": {
+    "aws:cdk:path": "adpa-prod-simple-stack/CDKMetadata/Default"
+   }
+  }
+ },
+ "Outputs": {
+  "AdpaApiEndpoint991CD6E5": {
+   "Value": {
+    "Fn::Join": [
+     "",
+     [
+      "https://",
+      {
+       "Ref": "AdpaApi6B324C73"
+      },
+      ".execute-api.us-east-2.",
+      {
+       "Ref": "AWS::URLSuffix"
+      },
+      "/",
+      {
+       "Ref": "AdpaApiDeploymentStageprod36FE90E0"
+      },
+      "/"
+     ]
+    ]
+   }
+  },
+  "ApiUrl": {
+   "Description": "Production API Gateway URL",
+   "Value": {
+    "Fn::Join": [
+     "",
+     [
+      "https://",
+      {
+       "Ref": "AdpaApi6B324C73"
+      },
+      ".execute-api.us-east-2.",
+      {
+       "Ref": "AWS::URLSuffix"
+      },
+      "/",
+      {
+       "Ref": "AdpaApiDeploymentStageprod36FE90E0"
+      },
+      "/"
+     ]
+    ]
+   }
+  },
+  "DataBucketName": {
+   "Description": "Data S3 Bucket Name",
+   "Value": {
+    "Ref": "DataBucketE3889A50"
+   }
+  },
+  "ModelsBucketName": {
+   "Description": "Models S3 Bucket Name",
+   "Value": {
+    "Ref": "ModelsBucketA3610ED4"
+   }
+  },
+  "PipelinesTableName": {
+   "Description": "Pipelines DynamoDB Table Name",
+   "Value": {
+    "Ref": "PipelinesTable2D06D7D8"
+   }
+  },
+  "LambdaFunctionName": {
+   "Description": "Lambda Function Name",
+   "Value": {
+    "Ref": "ApiFunctionCE271BD4"
+   }
+  }
+ },
+ "Parameters": {
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

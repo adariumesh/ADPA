@@ -1,0 +1,461 @@
+{
+  "version": "32.0.0",
+  "artifacts": {
+    "adpa-prod-simple-stack.assets": {
+      "type": "cdk:asset-manifest",
+      "properties": {
+        "file": "adpa-prod-simple-stack.assets.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+      }
+    },
+    "adpa-prod-simple-stack": {
+      "type": "aws:cloudformation:stack",
+      "environment": "aws://083308938449/us-east-2",
+      "properties": {
+        "templateFile": "adpa-prod-simple-stack.template.json",
+        "tags": {
+          "DeploymentType": "enterprise-simple",
+          "Environment": "production",
+          "Project": "ADPA",
+          "Version": "2.0"
+        },
+        "validateOnSynth": false,
+        "assumeRoleArn": "arn:${AWS::Partition}:iam::083308938449:role/cdk-hnb659fds-deploy-role-083308938449-us-east-2",
+        "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::083308938449:role/cdk-hnb659fds-cfn-exec-role-083308938449-us-east-2",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-083308938449-us-east-2/11ebe354a55a5410a908c4727bd3184cb24e02b4a36264857a298cc242f1c1d5.json",
+        "requiresBootstrapStackVersion": 6,
+        "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
+        "additionalDependencies": [
+          "adpa-prod-simple-stack.assets"
+        ],
+        "lookupRole": {
+          "arn": "arn:${AWS::Partition}:iam::083308938449:role/cdk-hnb659fds-lookup-role-083308938449-us-east-2",
+          "requiresBootstrapStackVersion": 8,
+          "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version"
+        }
+      },
+      "dependencies": [
+        "adpa-prod-simple-stack.assets"
+      ],
+      "metadata": {
+        "/adpa-prod-simple-stack": [
+          {
+            "type": "aws:cdk:stack-tags",
+            "data": [
+              {
+                "Key": "DeploymentType",
+                "Value": "enterprise-simple"
+              },
+              {
+                "Key": "Environment",
+                "Value": "production"
+              },
+              {
+                "Key": "Project",
+                "Value": "ADPA"
+              },
+              {
+                "Key": "Version",
+                "Value": "2.0"
+              }
+            ]
+          }
+        ],
+        "/adpa-prod-simple-stack/DataBucket/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "DataBucketE3889A50"
+          }
+        ],
+        "/adpa-prod-simple-stack/ModelsBucket/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ModelsBucketA3610ED4"
+          }
+        ],
+        "/adpa-prod-simple-stack/PipelinesTable": [
+          {
+            "type": "aws:cdk:hasPhysicalName",
+            "data": {
+              "Ref": "PipelinesTable2D06D7D8"
+            }
+          }
+        ],
+        "/adpa-prod-simple-stack/PipelinesTable/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "PipelinesTable2D06D7D8"
+          }
+        ],
+        "/adpa-prod-simple-stack/LambdaExecutionRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "LambdaExecutionRoleD5C26073"
+          }
+        ],
+        "/adpa-prod-simple-stack/LambdaExecutionRole/DefaultPolicy/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "LambdaExecutionRoleDefaultPolicy6D69732F"
+          }
+        ],
+        "/adpa-prod-simple-stack/ApiFunction/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiFunctionCE271BD4"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApi6B324C73"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/CloudWatchRole/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApiCloudWatchRole133BC486"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Account": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApiAccount3DB9C77C"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Deployment/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApiDeploymentA0A833B201e5aa3611db7073cb519f5e893aec2f"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/DeploymentStage.prod/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApiDeploymentStageprod36FE90E0"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Endpoint": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApiEndpoint991CD6E5"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApiOPTIONS5F2876C5"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/health/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApihealthCCDE7D68"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/health/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApihealthOPTIONS602031BD"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/health/GET/ApiPermission.adpaprodsimplestackAdpaApiF340B6D5.GET..health": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApihealthGETApiPermissionadpaprodsimplestackAdpaApiF340B6D5GEThealth4BB77DFB"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/health/GET/ApiPermission.Test.adpaprodsimplestackAdpaApiF340B6D5.GET..health": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApihealthGETApiPermissionTestadpaprodsimplestackAdpaApiF340B6D5GEThealthD7EB2223"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/health/GET/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApihealthGET8394F3FE"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/pipelines/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApipipelines40568CA0"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/pipelines/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApipipelinesOPTIONSA68854A9"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/pipelines/GET/ApiPermission.adpaprodsimplestackAdpaApiF340B6D5.GET..pipelines": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApipipelinesGETApiPermissionadpaprodsimplestackAdpaApiF340B6D5GETpipelinesDC504ADA"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/pipelines/GET/ApiPermission.Test.adpaprodsimplestackAdpaApiF340B6D5.GET..pipelines": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApipipelinesGETApiPermissionTestadpaprodsimplestackAdpaApiF340B6D5GETpipelinesD3381A6A"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/pipelines/GET/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApipipelinesGETD093A871"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/pipelines/POST/ApiPermission.adpaprodsimplestackAdpaApiF340B6D5.POST..pipelines": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApipipelinesPOSTApiPermissionadpaprodsimplestackAdpaApiF340B6D5POSTpipelinesDC727C95"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/pipelines/POST/ApiPermission.Test.adpaprodsimplestackAdpaApiF340B6D5.POST..pipelines": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApipipelinesPOSTApiPermissionTestadpaprodsimplestackAdpaApiF340B6D5POSTpipelinesED555BB5"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/pipelines/POST/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApipipelinesPOST2D5ADAE7"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApipipelinesidC608376B"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApipipelinesidOPTIONS544CE5E7"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/GET/ApiPermission.adpaprodsimplestackAdpaApiF340B6D5.GET..pipelines.{id}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApipipelinesidGETApiPermissionadpaprodsimplestackAdpaApiF340B6D5GETpipelinesid510CCF2D"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/GET/ApiPermission.Test.adpaprodsimplestackAdpaApiF340B6D5.GET..pipelines.{id}": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApipipelinesidGETApiPermissionTestadpaprodsimplestackAdpaApiF340B6D5GETpipelinesid93735FA3"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/GET/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApipipelinesidGET5E49D8CA"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/execute/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApipipelinesidexecuteD7492960"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/execute/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApipipelinesidexecuteOPTIONS650497E1"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/execute/POST/ApiPermission.adpaprodsimplestackAdpaApiF340B6D5.POST..pipelines.{id}.execute": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApipipelinesidexecutePOSTApiPermissionadpaprodsimplestackAdpaApiF340B6D5POSTpipelinesidexecute72F72398"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/execute/POST/ApiPermission.Test.adpaprodsimplestackAdpaApiF340B6D5.POST..pipelines.{id}.execute": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApipipelinesidexecutePOSTApiPermissionTestadpaprodsimplestackAdpaApiF340B6D5POSTpipelinesidexecute341888E6"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/execute/POST/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApipipelinesidexecutePOST4C0A7E5E"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/status/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApipipelinesidstatus6DC20917"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/status/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApipipelinesidstatusOPTIONS91C11947"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/status/GET/ApiPermission.adpaprodsimplestackAdpaApiF340B6D5.GET..pipelines.{id}.status": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApipipelinesidstatusGETApiPermissionadpaprodsimplestackAdpaApiF340B6D5GETpipelinesidstatus69BE248F"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/status/GET/ApiPermission.Test.adpaprodsimplestackAdpaApiF340B6D5.GET..pipelines.{id}.status": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApipipelinesidstatusGETApiPermissionTestadpaprodsimplestackAdpaApiF340B6D5GETpipelinesidstatus8E909A4C"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/pipelines/{id}/status/GET/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApipipelinesidstatusGETB6DC5705"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/data/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApidataFBCD020E"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/data/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApidataOPTIONSA552F2ED"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/data/upload/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApidatauploadF6D179A1"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/data/upload/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApidatauploadOPTIONSE176797A"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/data/upload/POST/ApiPermission.adpaprodsimplestackAdpaApiF340B6D5.POST..data.upload": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApidatauploadPOSTApiPermissionadpaprodsimplestackAdpaApiF340B6D5POSTdataupload95581A28"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/data/upload/POST/ApiPermission.Test.adpaprodsimplestackAdpaApiF340B6D5.POST..data.upload": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApidatauploadPOSTApiPermissionTestadpaprodsimplestackAdpaApiF340B6D5POSTdataupload22EA44F5"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/data/upload/POST/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApidatauploadPOST27FA4DC8"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/data/uploads/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApidatauploads78D68091"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/data/uploads/OPTIONS/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApidatauploadsOPTIONS5BEE4EE8"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/data/uploads/GET/ApiPermission.adpaprodsimplestackAdpaApiF340B6D5.GET..data.uploads": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApidatauploadsGETApiPermissionadpaprodsimplestackAdpaApiF340B6D5GETdatauploads5505E8DF"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/data/uploads/GET/ApiPermission.Test.adpaprodsimplestackAdpaApiF340B6D5.GET..data.uploads": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApidatauploadsGETApiPermissionTestadpaprodsimplestackAdpaApiF340B6D5GETdatauploads5B70546C"
+          }
+        ],
+        "/adpa-prod-simple-stack/AdpaApi/Default/data/uploads/GET/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "AdpaApidatauploadsGET8997C171"
+          }
+        ],
+        "/adpa-prod-simple-stack/LambdaErrorAlarm/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "LambdaErrorAlarm646BFA4C"
+          }
+        ],
+        "/adpa-prod-simple-stack/ApiGateway4XXAlarm/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiGateway4XXAlarm59D14AA2"
+          }
+        ],
+        "/adpa-prod-simple-stack/ApiUrl": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ApiUrl"
+          }
+        ],
+        "/adpa-prod-simple-stack/DataBucketName": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "DataBucketName"
+          }
+        ],
+        "/adpa-prod-simple-stack/ModelsBucketName": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "ModelsBucketName"
+          }
+        ],
+        "/adpa-prod-simple-stack/PipelinesTableName": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "PipelinesTableName"
+          }
+        ],
+        "/adpa-prod-simple-stack/LambdaFunctionName": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "LambdaFunctionName"
+          }
+        ],
+        "/adpa-prod-simple-stack/CDKMetadata/Default": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CDKMetadata"
+          }
+        ],
+        "/adpa-prod-simple-stack/BootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "BootstrapVersion"
+          }
+        ],
+        "/adpa-prod-simple-stack/CheckBootstrapVersion": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "CheckBootstrapVersion"
+          }
+        ]
+      },
+      "displayName": "adpa-prod-simple-stack"
+    },
+    "Tree": {
+      "type": "cdk:tree",
+      "properties": {
+        "file": "tree.json"
+      }
+    }
+  }
+}

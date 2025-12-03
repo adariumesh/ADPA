@@ -1,0 +1,460 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ADPA Containerized Deployment - ECS with ALB'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: 'adpa'
+    Description: 'Name of the ADPA project'
+  
+  Environment:
+    Type: String
+    Default: 'development'
+    AllowedValues: ['development', 'staging', 'production']
+    Description: 'Environment name'
+  
+  ContainerImage:
+    Type: String
+    Default: 'adpa:latest'
+    Description: 'Docker image for ADPA container'
+    
+  DesiredCapacity:
+    Type: Number
+    Default: 2
+    MinValue: 1
+    MaxValue: 10
+    Description: 'Desired number of container instances'
+
+Resources:
+  # ============================================================================
+  # ECS CLUSTER
+  # ============================================================================
+  
+  ADPAECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${ProjectName}-cluster-${Environment}'
+      CapacityProviders:
+        - FARGATE
+        - FARGATE_SPOT
+      DefaultCapacityProviderStrategy:
+        - CapacityProvider: FARGATE
+          Weight: 1
+        - CapacityProvider: FARGATE_SPOT
+          Weight: 1
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-ecs-cluster-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ============================================================================
+  # APPLICATION LOAD BALANCER
+  # ============================================================================
+  
+  ADPASecurityGroupALB:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for ADPA Application Load Balancer
+      VpcId:
+        Fn::ImportValue: !Sub '${ProjectName}-vpc-id-${Environment}'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: 'HTTP access from internet'
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: 'HTTPS access from internet'
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-alb-sg-${Environment}'
+
+  ADPAApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub '${ProjectName}-alb-${Environment}'
+      Type: application
+      Scheme: internet-facing
+      IpAddressType: ipv4
+      Subnets:
+        - Fn::ImportValue: !Sub '${ProjectName}-public-subnet-${Environment}'
+        - Fn::ImportValue: !Sub '${ProjectName}-private-subnet-${Environment}'
+      SecurityGroups:
+        - !Ref ADPASecurityGroupALB
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-alb-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+
+  ADPATargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${ProjectName}-tg-${Environment}'
+      Port: 8000
+      Protocol: HTTP
+      VpcId:
+        Fn::ImportValue: !Sub '${ProjectName}-vpc-id-${Environment}'
+      TargetType: ip
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /health
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: '30'
+        - Key: stickiness.enabled
+          Value: 'true'
+        - Key: stickiness.type
+          Value: lb_cookie
+        - Key: stickiness.lb_cookie.duration_seconds
+          Value: '86400'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-target-group-${Environment}'
+
+  ADPAListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ADPATargetGroup
+      LoadBalancerArn: !Ref ADPAApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  # ============================================================================
+  # ECS TASK DEFINITION AND SERVICE
+  # ============================================================================
+  
+  ADPASecurityGroupECS:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for ADPA ECS containers
+      VpcId:
+        Fn::ImportValue: !Sub '${ProjectName}-vpc-id-${Environment}'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          SourceSecurityGroupId: !Ref ADPASecurityGroupALB
+          Description: 'HTTP from ALB'
+        - IpProtocol: tcp
+          FromPort: 8001
+          ToPort: 8001
+          SourceSecurityGroupId: !Ref ADPASecurityGroupALB
+          Description: 'MCP server from ALB'
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-ecs-sg-${Environment}'
+
+  ADPATaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-ecs-execution-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ADPASecretsAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  Fn::ImportValue: !Sub '${ProjectName}-secrets-arn-${Environment}'
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                Resource:
+                  Fn::ImportValue: !Sub '${ProjectName}-kms-key-${Environment}'
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+
+  ADPATaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-ecs-task-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ADPAContainerPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - Fn::ImportValue: !Sub '${ProjectName}-data-bucket-${Environment}'
+                  - !Sub 
+                    - '${BucketArn}/*'
+                    - BucketArn:
+                        Fn::ImportValue: !Sub '${ProjectName}-data-bucket-${Environment}'
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  Fn::ImportValue: !Sub '${ProjectName}-secrets-arn-${Environment}'
+              - Effect: Allow
+                Action:
+                  - sagemaker:CreateAutoMLJob
+                  - sagemaker:DescribeAutoMLJob
+                  - sagemaker:StopAutoMLJob
+                  - sagemaker:CreateTrainingJob
+                  - sagemaker:DescribeTrainingJob
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - states:StartExecution
+                  - states:DescribeExecution
+                  - states:StopExecution
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+
+  ADPALogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/ecs/${ProjectName}-${Environment}'
+      RetentionInDays: 30
+      KmsKeyId:
+        Fn::ImportValue: !Sub '${ProjectName}-kms-key-${Environment}'
+
+  ADPATaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${ProjectName}-task-${Environment}'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: 1024
+      Memory: 2048
+      ExecutionRoleArn: !GetAtt ADPATaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ADPATaskRole.Arn
+      ContainerDefinitions:
+        - Name: adpa-container
+          Image: !Ref ContainerImage
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8000
+              Protocol: tcp
+            - ContainerPort: 8001
+              Protocol: tcp
+          Environment:
+            - Name: ADPA_ENVIRONMENT
+              Value: !Ref Environment
+            - Name: ADPA_LOG_LEVEL
+              Value: INFO
+            - Name: ADPA_DATA_DIR
+              Value: /app/data
+            - Name: AWS_DEFAULT_REGION
+              Value: !Ref AWS::Region
+            - Name: DATA_BUCKET
+              Value:
+                Fn::ImportValue: !Sub '${ProjectName}-data-bucket-${Environment}'
+          Secrets:
+            - Name: OPENAI_API_KEY
+              ValueFrom: !Sub 
+                - '${SecretArn}:openai_api_key::'
+                - SecretArn:
+                    Fn::ImportValue: !Sub '${ProjectName}-secrets-arn-${Environment}'
+            - Name: ANTHROPIC_API_KEY
+              ValueFrom: !Sub
+                - '${SecretArn}:anthropic_api_key::'
+                - SecretArn:
+                    Fn::ImportValue: !Sub '${ProjectName}-secrets-arn-${Environment}'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ADPALogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: adpa
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - curl -f http://localhost:8000/health || exit 1
+            Interval: 30
+            Timeout: 10
+            Retries: 3
+            StartPeriod: 60
+          StartTimeout: 120
+          StopTimeout: 30
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-task-definition-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+
+  ADPAService:
+    Type: AWS::ECS::Service
+    DependsOn: ADPAListener
+    Properties:
+      ServiceName: !Sub '${ProjectName}-service-${Environment}'
+      Cluster: !Ref ADPAECSCluster
+      TaskDefinition: !Ref ADPATaskDefinition
+      LaunchType: FARGATE
+      DesiredCount: !Ref DesiredCapacity
+      PlatformVersion: LATEST
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets:
+            - Fn::ImportValue: !Sub '${ProjectName}-private-subnet-${Environment}'
+          SecurityGroups:
+            - !Ref ADPASecurityGroupECS
+      LoadBalancers:
+        - ContainerName: adpa-container
+          ContainerPort: 8000
+          TargetGroupArn: !Ref ADPATargetGroup
+      HealthCheckGracePeriodSeconds: 300
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+      EnableExecuteCommand: true
+      PropagateTags: SERVICE
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-ecs-service-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ============================================================================
+  # AUTO SCALING
+  # ============================================================================
+  
+  ADPAAutoScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: 10
+      MinCapacity: 1
+      ResourceId: !Sub 'service/${ADPAECSCluster}/${ADPAService.Name}'
+      RoleARN: !Sub 'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService'
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+
+  ADPAAutoScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-scaling-policy-${Environment}'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ADPAAutoScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        TargetValue: 70.0
+        ScaleOutCooldown: 300
+        ScaleInCooldown: 300
+
+  # ============================================================================
+  # CLOUDWATCH ALARMS
+  # ============================================================================
+  
+  ADPAServiceCPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-service-cpu-${Environment}'
+      AlarmDescription: 'High CPU utilization on ADPA ECS service'
+      MetricName: CPUUtilization
+      Namespace: AWS/ECS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 85
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ServiceName
+          Value: !Sub '${ProjectName}-service-${Environment}'
+        - Name: ClusterName
+          Value: !Ref ADPAECSCluster
+
+  ADPAServiceMemoryAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-service-memory-${Environment}'
+      AlarmDescription: 'High memory utilization on ADPA ECS service'
+      MetricName: MemoryUtilization
+      Namespace: AWS/ECS
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 85
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ServiceName
+          Value: !Sub '${ProjectName}-service-${Environment}'
+        - Name: ClusterName
+          Value: !Ref ADPAECSCluster
+
+Outputs:
+  LoadBalancerDNS:
+    Description: 'DNS name of the load balancer'
+    Value: !GetAtt ADPAApplicationLoadBalancer.DNSName
+    Export:
+      Name: !Sub '${ProjectName}-alb-dns-${Environment}'
+
+  LoadBalancerURL:
+    Description: 'URL to access ADPA web interface'
+    Value: !Sub 'http://${ADPAApplicationLoadBalancer.DNSName}'
+    Export:
+      Name: !Sub '${ProjectName}-web-url-${Environment}'
+
+  ECSClusterName:
+    Description: 'ECS cluster name'
+    Value: !Ref ADPAECSCluster
+    Export:
+      Name: !Sub '${ProjectName}-ecs-cluster-${Environment}'
+
+  ECSServiceName:
+    Description: 'ECS service name'
+    Value: !Ref ADPAService
+    Export:
+      Name: !Sub '${ProjectName}-ecs-service-${Environment}'
+
+  TaskDefinitionArn:
+    Description: 'Task definition ARN'
+    Value: !Ref ADPATaskDefinition
+    Export:
+      Name: !Sub '${ProjectName}-task-definition-${Environment}'

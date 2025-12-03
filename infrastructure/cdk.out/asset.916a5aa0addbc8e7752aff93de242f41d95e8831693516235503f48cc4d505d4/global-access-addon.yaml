@@ -1,0 +1,440 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ADPA Global Access Addon - Makes ADPA accessible worldwide'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: 'adpa'
+  Environment:
+    Type: String
+    Default: 'development'
+  DomainName:
+    Type: String
+    Default: 'api.adpa.local'
+    Description: 'Domain name for global access (optional)'
+  CertificateArn:
+    Type: String
+    Default: ''
+    Description: 'SSL Certificate ARN for custom domain (optional)'
+
+Conditions:
+  HasCustomDomain: !Not [!Equals [!Ref DomainName, 'api.adpa.local']]
+  HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
+
+Resources:
+  # ============================================================================
+  # GLOBAL API GATEWAY
+  # ============================================================================
+  
+  ADPAGlobalAPI:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub '${ProjectName}-global-api-${Environment}'
+      Description: 'Global API for ADPA autonomous data pipelines'
+      EndpointConfiguration:
+        Types: ['REGIONAL']
+      Policy:
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action: 'execute-api:Invoke'
+            Resource: '*'
+            Condition:
+              IpAddress:
+                aws:SourceIp: ['0.0.0.0/0']  # Allow from anywhere
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # API Resources
+  ADPAPipelinesResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ADPAGlobalAPI
+      ParentId: !GetAtt ADPAGlobalAPI.RootResourceId
+      PathPart: 'pipelines'
+
+  ADPAExecuteResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ADPAGlobalAPI
+      ParentId: !Ref ADPAPipelinesResource
+      PathPart: 'execute'
+
+  ADPAStatusResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ADPAGlobalAPI
+      ParentId: !Ref ADPAPipelinesResource
+      PathPart: 'status'
+
+  # API Methods
+  ADPAExecutePipelineMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ADPAGlobalAPI
+      ResourceId: !Ref ADPAExecuteResource
+      HttpMethod: POST
+      AuthorizationType: AWS_IAM
+      Integration:
+        Type: AWS
+        IntegrationHttpMethod: POST
+        Uri: !Sub 
+          - 'arn:aws:apigateway:${AWS::Region}:states:action/StartExecution'
+          - {}
+        Credentials: !GetAtt ADPAAPIGatewayRole.Arn
+        RequestTemplates:
+          application/json: !Sub |
+            {
+              "stateMachineArn": "${ADPAStateMachineArn}",
+              "name": "$context.requestId",
+              "input": "$util.escapeJavaScript($input.body)"
+            }
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseTemplates:
+              application/json: |
+                {
+                  "executionArn": "$input.path('$.executionArn')",
+                  "status": "STARTED",
+                  "message": "ADPA pipeline execution started",
+                  "requestId": "$context.requestId"
+                }
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: !Ref ADPAExecutionResponseModel
+
+  ADPAGetStatusMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ADPAGlobalAPI
+      ResourceId: !Ref ADPAStatusResource
+      HttpMethod: GET
+      AuthorizationType: AWS_IAM
+      RequestParameters:
+        method.request.querystring.executionArn: true
+      Integration:
+        Type: AWS
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:states:action/DescribeExecution'
+        Credentials: !GetAtt ADPAAPIGatewayRole.Arn
+        RequestTemplates:
+          application/json: |
+            {
+              "executionArn": "$input.params('executionArn')"
+            }
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseTemplates:
+              application/json: |
+                {
+                  "status": "$input.path('$.status')",
+                  "startDate": "$input.path('$.startDate')",
+                  "stopDate": "$input.path('$.stopDate')",
+                  "input": "$input.path('$.input')",
+                  "output": "$input.path('$.output')"
+                }
+      MethodResponses:
+        - StatusCode: 200
+
+  # API Models
+  ADPAExecutionResponseModel:
+    Type: AWS::ApiGateway::Model
+    Properties:
+      RestApiId: !Ref ADPAGlobalAPI
+      ContentType: application/json
+      Name: ExecutionResponse
+      Schema:
+        type: object
+        properties:
+          executionArn:
+            type: string
+          status:
+            type: string
+          message:
+            type: string
+          requestId:
+            type: string
+
+  # API Deployment
+  ADPAAPIDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - ADPAExecutePipelineMethod
+      - ADPAGetStatusMethod
+    Properties:
+      RestApiId: !Ref ADPAGlobalAPI
+      Description: 'ADPA Global API Deployment'
+
+  ADPAAPIStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref ADPAGlobalAPI
+      DeploymentId: !Ref ADPAAPIDeployment
+      StageName: !Ref Environment
+      MethodSettings:
+        - ResourcePath: '/*'
+          HttpMethod: '*'
+          LoggingLevel: INFO
+          DataTraceEnabled: true
+          MetricsEnabled: true
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Usage Plan for Rate Limiting
+  ADPAUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      UsagePlanName: !Sub '${ProjectName}-global-usage-${Environment}'
+      Description: 'Usage plan for ADPA global access'
+      Throttle:
+        BurstLimit: 1000
+        RateLimit: 100
+      Quota:
+        Limit: 10000
+        Period: DAY
+      ApiStages:
+        - ApiId: !Ref ADPAGlobalAPI
+          Stage: !Ref ADPAAPIStage
+
+  # API Key for Access
+  ADPAAPIKey:
+    Type: AWS::ApiGateway::ApiKey
+    Properties:
+      Name: !Sub '${ProjectName}-global-key-${Environment}'
+      Description: 'API key for ADPA global access'
+      Enabled: true
+      StageKeys:
+        - RestApiId: !Ref ADPAGlobalAPI
+          StageName: !Ref ADPAAPIStage
+
+  ADPAUsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref ADPAAPIKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref ADPAUsagePlan
+
+  # ============================================================================
+  # CLOUDFRONT GLOBAL DISTRIBUTION
+  # ============================================================================
+  
+  ADPACloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: !Sub 'ADPA Global Distribution - ${Environment}'
+        Origins:
+          - DomainName: !Sub '${ADPAGlobalAPI}.execute-api.${AWS::Region}.amazonaws.com'
+            Id: ADPA-API-Origin
+            OriginPath: !Sub '/${Environment}'
+            CustomOriginConfig:
+              HTTPPort: 443
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: ['TLSv1.2']
+        DefaultCacheBehavior:
+          TargetOriginId: ADPA-API-Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: ['DELETE', 'GET', 'HEAD', 'OPTIONS', 'PATCH', 'POST', 'PUT']
+          CachedMethods: ['GET', 'HEAD', 'OPTIONS']
+          Compress: true
+          ForwardedValues:
+            QueryString: true
+            Headers: ['Authorization', 'x-api-key']
+          TrustedSigners: []
+          MinTTL: 0
+          DefaultTTL: 0
+          MaxTTL: 0  # No caching for dynamic API responses
+        CacheBehaviors:
+          - PathPattern: '/pipelines/status'
+            TargetOriginId: ADPA-API-Origin
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: ['GET', 'HEAD', 'OPTIONS']
+            ForwardedValues:
+              QueryString: true
+              Headers: ['Authorization', 'x-api-key']
+            MinTTL: 30
+            DefaultTTL: 60
+            MaxTTL: 300  # Cache status queries briefly
+        Enabled: true
+        PriceClass: PriceClass_All  # Global edge locations
+        HttpVersion: http2
+        IPV6Enabled: true
+        WebACLId: !Ref ADPAWebACL
+        ViewerCertificate:
+          !If
+            - HasCertificate
+            - AcmCertificateArn: !Ref CertificateArn
+              SslSupportMethod: sni-only
+              MinimumProtocolVersion: TLSv1.2_2021
+            - CloudFrontDefaultCertificate: true
+        Aliases:
+          !If
+            - HasCustomDomain
+            - [!Ref DomainName]
+            - !Ref AWS::NoValue
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ============================================================================
+  # WAF WEB ACL FOR SECURITY
+  # ============================================================================
+  
+  ADPAWebACL:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: !Sub '${ProjectName}-global-waf-${Environment}'
+      Scope: CLOUDFRONT
+      DefaultAction:
+        Allow: {}
+      Rules:
+        - Name: RateLimitRule
+          Priority: 1
+          Statement:
+            RateBasedStatement:
+              Limit: 1000
+              AggregateKeyType: IP
+          Action:
+            Block: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: ADPARateLimit
+        - Name: AWSManagedRulesCommonRuleSet
+          Priority: 2
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: ADPACommonRules
+        - Name: AWSManagedRulesKnownBadInputsRuleSet
+          Priority: 3
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesKnownBadInputsRuleSet
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: ADPABadInputs
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: ADPAWEBACL
+
+  # ============================================================================
+  # IAM ROLES
+  # ============================================================================
+  
+  ADPAAPIGatewayRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-apigateway-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: StepFunctionsExecutionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'states:StartExecution'
+                  - 'states:DescribeExecution'
+                  - 'states:GetExecutionHistory'
+                Resource: !Ref ADPAStateMachineArn
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+
+  # ============================================================================
+  # MONITORING & ALARMS
+  # ============================================================================
+  
+  ADPAAPIErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-api-errors-${Environment}'
+      AlarmDescription: 'High error rate in ADPA Global API'
+      MetricName: 4XXError
+      Namespace: AWS/ApiGateway
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ApiName
+          Value: !Ref ADPAGlobalAPI
+        - Name: Stage
+          Value: !Ref ADPAAPIStage
+
+  ADPACloudFrontErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-cloudfront-errors-${Environment}'
+      AlarmDescription: 'High error rate in ADPA CloudFront distribution'
+      MetricName: 4xxErrorRate
+      Namespace: AWS/CloudFront
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: DistributionId
+          Value: !Ref ADPACloudFrontDistribution
+
+# ============================================================================
+# OUTPUTS
+# ============================================================================
+
+Outputs:
+  GlobalAPIEndpoint:
+    Description: 'Global API Gateway endpoint'
+    Value: !Sub 'https://${ADPAGlobalAPI}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+    Export:
+      Name: !Sub '${ProjectName}-global-api-${Environment}'
+
+  CloudFrontDomain:
+    Description: 'CloudFront global distribution domain'
+    Value: !GetAtt ADPACloudFrontDistribution.DomainName
+    Export:
+      Name: !Sub '${ProjectName}-global-domain-${Environment}'
+
+  GlobalAPIKey:
+    Description: 'API key for global access'
+    Value: !Ref ADPAAPIKey
+    Export:
+      Name: !Sub '${ProjectName}-global-key-${Environment}'
+
+  CustomDomainURL:
+    Condition: HasCustomDomain
+    Description: 'Custom domain URL for global access'
+    Value: !Sub 'https://${DomainName}'
+
+  UsageInstructions:
+    Description: 'How to use the global API'
+    Value: !Sub |
+      curl -X POST https://${ADPACloudFrontDistribution.DomainName}/pipelines/execute \
+        -H "x-api-key: ${ADPAAPIKey}" \
+        -H "Content-Type: application/json" \
+        -d '{"data_path": "s3://your-bucket/data.csv", "objective": "predict sales"}'

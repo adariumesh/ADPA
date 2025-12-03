@@ -71,7 +71,10 @@
       "Bash(docker-compose up:*)",
       "Bash(open:*)",
       "Bash(docker:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(grep:*)",
+      "Bash(npx cdk bootstrap:*)",
+      "Bash(npx cdk:*)"
     ],
     "deny": []
   }

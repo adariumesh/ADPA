@@ -1,0 +1,304 @@
+{
+  "Comment": "ADPA ML Pipeline Orchestration - Complete workflow for data ingestion, cleaning, feature engineering, model training, evaluation, and deployment",
+  "StartAt": "ValidateInput",
+  "States": {
+    "ValidateInput": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-east-2:083308938449:function:adpa-validate-input",
+      "Comment": "Validate pipeline input parameters and check S3 data availability",
+      "ResultPath": "$.validation",
+      "Next": "IngestData",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Retry": [
+        {
+          "ErrorEquals": ["States.Timeout"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ]
+    },
+    "IngestData": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-east-2:083308938449:function:adpa-data-ingest",
+      "Comment": "Load data from S3, perform initial validation, check for missing values",
+      "ResultPath": "$.ingestion",
+      "TimeoutSeconds": 300,
+      "Next": "CleanData",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Retry": [
+        {
+          "ErrorEquals": ["States.Timeout", "Lambda.ServiceException"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ]
+    },
+    "CleanData": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-east-2:083308938449:function:adpa-data-cleaner",
+      "Comment": "Handle missing values, remove duplicates, fix data types, outlier detection",
+      "ResultPath": "$.cleaning",
+      "TimeoutSeconds": 600,
+      "Next": "CheckDataQuality",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Retry": [
+        {
+          "ErrorEquals": ["States.Timeout"],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ]
+    },
+    "CheckDataQuality": {
+      "Type": "Choice",
+      "Comment": "Verify data quality meets minimum thresholds",
+      "Choices": [
+        {
+          "Variable": "$.cleaning.quality_score",
+          "NumericGreaterThanEquals": 0.7,
+          "Next": "FeatureEngineering"
+        }
+      ],
+      "Default": "DataQualityFailed"
+    },
+    "DataQualityFailed": {
+      "Type": "Fail",
+      "Comment": "Data quality below acceptable threshold (70%)",
+      "Error": "DataQualityError",
+      "Cause": "Cleaned data quality score below 0.7 threshold"
+    },
+    "FeatureEngineering": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-east-2:083308938449:function:adpa-feature-engineer",
+      "Comment": "Generate features, encoding, scaling, feature selection, dimensionality reduction",
+      "ResultPath": "$.features",
+      "TimeoutSeconds": 900,
+      "Next": "DecideTrainingMethod",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Retry": [
+        {
+          "ErrorEquals": ["States.Timeout"],
+          "IntervalSeconds": 15,
+          "MaxAttempts": 2,
+          "BackoffRate": 1.5
+        }
+      ]
+    },
+    "DecideTrainingMethod": {
+      "Type": "Choice",
+      "Comment": "Choose training method based on dataset size and complexity",
+      "Choices": [
+        {
+          "Variable": "$.features.dataset_size_mb",
+          "NumericGreaterThan": 100,
+          "Next": "TrainModelSageMaker"
+        },
+        {
+          "Variable": "$.features.requires_gpu",
+          "BooleanEquals": true,
+          "Next": "TrainModelSageMaker"
+        }
+      ],
+      "Default": "TrainModelLambda"
+    },
+    "TrainModelLambda": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-east-2:083308938449:function:adpa-model-trainer-lambda",
+      "Comment": "Train sklearn models in Lambda (for small datasets <100MB)",
+      "ResultPath": "$.training",
+      "TimeoutSeconds": 900,
+      "Next": "EvaluateModel",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Retry": [
+        {
+          "ErrorEquals": ["States.Timeout"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 1,
+          "BackoffRate": 1
+        }
+      ]
+    },
+    "TrainModelSageMaker": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sagemaker:createTrainingJob.sync",
+      "Comment": "Train models using SageMaker (for large datasets or GPU workloads)",
+      "Parameters": {
+        "TrainingJobName.$": "$.training_job_name",
+        "RoleArn": "arn:aws:iam::083308938449:role/adpa-sagemaker-execution-role",
+        "AlgorithmSpecification": {
+          "TrainingImage": "683313688378.dkr.ecr.us-east-2.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3",
+          "TrainingInputMode": "File"
+        },
+        "InputDataConfig": [
+          {
+            "ChannelName": "training",
+            "DataSource": {
+              "S3DataSource": {
+                "S3DataType": "S3Prefix",
+                "S3Uri.$": "$.features.training_data_s3_path",
+                "S3DataDistributionType": "FullyReplicated"
+              }
+            },
+            "ContentType": "text/csv"
+          }
+        ],
+        "OutputDataConfig": {
+          "S3OutputPath": "s3://adpa-models-083308938449-development/sagemaker-output"
+        },
+        "ResourceConfig": {
+          "InstanceType": "ml.m5.xlarge",
+          "InstanceCount": 1,
+          "VolumeSizeInGB": 30
+        },
+        "StoppingCondition": {
+          "MaxRuntimeInSeconds": 3600
+        },
+        "HyperParameters": {
+          "max_depth": "10",
+          "n_estimators": "100",
+          "learning_rate": "0.1"
+        }
+      },
+      "ResultPath": "$.training",
+      "Next": "EvaluateModel",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ]
+    },
+    "EvaluateModel": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-east-2:083308938449:function:adpa-model-evaluator",
+      "Comment": "Calculate metrics: accuracy, precision, recall, F1, AUC, confusion matrix",
+      "ResultPath": "$.evaluation",
+      "TimeoutSeconds": 600,
+      "Next": "CheckModelPerformance",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Retry": [
+        {
+          "ErrorEquals": ["States.Timeout"],
+          "IntervalSeconds": 10,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ]
+    },
+    "CheckModelPerformance": {
+      "Type": "Choice",
+      "Comment": "Verify model meets minimum performance threshold",
+      "Choices": [
+        {
+          "Variable": "$.evaluation.accuracy",
+          "NumericGreaterThanEquals": 0.75,
+          "Next": "RegisterModel"
+        }
+      ],
+      "Default": "ModelPerformanceFailed"
+    },
+    "ModelPerformanceFailed": {
+      "Type": "Fail",
+      "Comment": "Model accuracy below acceptable threshold (75%)",
+      "Error": "ModelPerformanceError",
+      "Cause": "Model accuracy below 0.75 threshold - consider retraining with different parameters"
+    },
+    "RegisterModel": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-east-2:083308938449:function:adpa-model-registry",
+      "Comment": "Save model to S3, update model registry with metadata and metrics",
+      "ResultPath": "$.registry",
+      "TimeoutSeconds": 300,
+      "Next": "NotifySuccess",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Retry": [
+        {
+          "ErrorEquals": ["States.Timeout", "Lambda.ServiceException"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ]
+    },
+    "NotifySuccess": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Comment": "Send success notification via SNS",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:us-east-2:083308938449:adpa-pipeline-notifications",
+        "Subject": "ADPA Pipeline Success",
+        "Message.$": "States.Format('Pipeline {} completed successfully. Model accuracy: {}', $.pipeline_id, $.evaluation.accuracy)"
+      },
+      "ResultPath": "$.notification",
+      "Next": "PipelineSuccess"
+    },
+    "PipelineSuccess": {
+      "Type": "Succeed",
+      "Comment": "Pipeline completed successfully"
+    },
+    "HandleFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Comment": "Send failure notification via SNS with error details",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:us-east-2:083308938449:adpa-pipeline-notifications",
+        "Subject": "ADPA Pipeline Failure",
+        "Message.$": "States.Format('Pipeline {} failed at step {}. Error: {}', $.pipeline_id, $$.State.Name, $.error.Cause)"
+      },
+      "ResultPath": "$.notification",
+      "Next": "PipelineFailure"
+    },
+    "PipelineFailure": {
+      "Type": "Fail",
+      "Comment": "Pipeline failed - check CloudWatch logs for details",
+      "Error": "PipelineExecutionError",
+      "Cause": "Pipeline execution failed - see error details in notification"
+    }
+  }
+}
