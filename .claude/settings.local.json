@@ -70,7 +70,8 @@
       "Bash(aws:*)",
       "Bash(docker-compose up:*)",
       "Bash(open:*)",
-      "Bash(docker:*)"
+      "Bash(docker:*)",
+      "Bash(cat:*)"
     ],
     "deny": []
   }
