@@ -35,6 +35,7 @@ import {
   ShowChart as ChartIcon,
   DataObject as DataIcon,
   CloudDownload as CloudDownloadIcon,
+  Psychology as AIIcon,
 } from '@mui/icons-material';
 import {
   BarChart,
@@ -472,6 +473,7 @@ const ResultsViewer: React.FC = () => {
                 onChange={(e, newValue) => setTabValue(newValue)}
                 aria-label="results tabs"
               >
+                <Tab label="AI Summary" icon={<AIIcon />} />
                 <Tab label="Overview" icon={<AssessmentIcon />} />
                 <Tab label="Metrics" icon={<ChartIcon />} />
                 <Tab label="Feature Importance" icon={<DataIcon />} />
@@ -479,8 +481,101 @@ const ResultsViewer: React.FC = () => {
               </Tabs>
             </Box>
 
-            {/* Overview Tab */}
+            {/* AI Summary Tab */}
             <TabPanel value={tabValue} index={0}>
+              <Grid container spacing={3}>
+                {/* AI-Generated Summary */}
+                <Grid size={12}>
+                  <Card variant="outlined" sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                        <AIIcon sx={{ fontSize: 32, color: 'white', mr: 1 }} />
+                        <Typography variant="h6" sx={{ color: 'white' }}>
+                          🤖 AI-Generated Analysis Summary
+                        </Typography>
+                      </Box>
+                      <Paper sx={{ p: 3, bgcolor: 'rgba(255,255,255,0.95)' }}>
+                        {currentPipeline?.aiInsights ? (
+                          <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.8 }}>
+                            {currentPipeline.aiInsights}
+                          </Typography>
+                        ) : currentPipeline?.result?.summary ? (
+                          <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.8 }}>
+                            {currentPipeline.result.summary}
+                          </Typography>
+                        ) : (
+                          <Alert severity="info">
+                            No AI summary available for this pipeline. The summary is generated when the pipeline completes using Amazon Bedrock Claude 3.5.
+                          </Alert>
+                        )}
+                      </Paper>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                {/* AI Understanding */}
+                {currentPipeline?.result?.understanding && (
+                  <Grid size={{ xs: 12, md: 6 }}>
+                    <Card variant="outlined">
+                      <CardContent>
+                        <Typography variant="h6" gutterBottom>
+                          🧠 AI Understanding
+                        </Typography>
+                        <List dense>
+                          <ListItem>
+                            <ListItemText
+                              primary="Problem Type"
+                              secondary={currentPipeline.result.understanding.problem_type || 'N/A'}
+                            />
+                          </ListItem>
+                          <ListItem>
+                            <ListItemText
+                              primary="Success Criteria"
+                              secondary={currentPipeline.result.understanding.success_criteria || 'N/A'}
+                            />
+                          </ListItem>
+                          <ListItem>
+                            <ListItemText
+                              primary="Evaluation Metrics"
+                              secondary={currentPipeline.result.understanding.evaluation_metrics?.join(', ') || 'N/A'}
+                            />
+                          </ListItem>
+                        </List>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                )}
+
+                {/* Pipeline Plan */}
+                {currentPipeline?.result?.pipeline_plan && (
+                  <Grid size={{ xs: 12, md: 6 }}>
+                    <Card variant="outlined">
+                      <CardContent>
+                        <Typography variant="h6" gutterBottom>
+                          📋 AI Pipeline Plan
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>
+                          Confidence: {((currentPipeline.result.pipeline_plan.confidence || 0) * 100).toFixed(0)}%
+                        </Typography>
+                        <List dense>
+                          {currentPipeline.result.pipeline_plan.steps?.slice(0, 5).map((step: any, index: number) => (
+                            <ListItem key={index}>
+                              <ListItemText
+                                primary={`${index + 1}. ${step.step}`}
+                                secondary={step.reasoning}
+                              />
+                            </ListItem>
+                          ))}
+                        </List>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                )}
+              </Grid>
+            </TabPanel>
+
+            {/* Overview Tab */}
+            <TabPanel value={tabValue} index={1}>
               <Grid container spacing={3}>
                 {/* Model Info */}
                 <Grid size={{ xs: 12, md: 6 }}>
@@ -619,7 +714,7 @@ const ResultsViewer: React.FC = () => {
             </TabPanel>
 
             {/* Metrics Tab */}
-            <TabPanel value={tabValue} index={1}>
+            <TabPanel value={tabValue} index={2}>
               <Grid container spacing={3}>
                 {/* Confusion Matrix */}
                 {results.metrics.confusionMatrix && (
@@ -746,7 +841,7 @@ const ResultsViewer: React.FC = () => {
             </TabPanel>
 
             {/* Feature Importance Tab */}
-            <TabPanel value={tabValue} index={2}>
+            <TabPanel value={tabValue} index={3}>
               <Card variant="outlined">
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
@@ -772,7 +867,7 @@ const ResultsViewer: React.FC = () => {
             </TabPanel>
 
             {/* Predictions Tab */}
-            <TabPanel value={tabValue} index={3}>
+            <TabPanel value={tabValue} index={4}>
               <Card variant="outlined">
                 <CardContent>
                   <Typography variant="h6" gutterBottom>
