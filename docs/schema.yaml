@@ -1,0 +1,41 @@
+version: 1
+sources:
+  - name: sales
+    format: csv
+    path: s3://<RAW_BUCKET>/adpa/raw/sales/sales.csv
+    schema:
+      - { name: order_id, type: int }
+      - { name: customer_id, type: int }
+      - { name: sku, type: string }
+      - { name: quantity, type: int }
+      - { name: unit_price, type: double }
+      - { name: order_date, type: date }
+      - { name: region, type: string }
+      - { name: revenue, type: double }
+
+  - name: users
+    format: jsonl
+    path: s3://<RAW_BUCKET>/adpa/raw/users/users.jsonl
+    schema:
+      - { name: user_id, type: int }
+      - { name: email, type: string }
+      - { name: signup_ts, type: timestamp }
+      - { name: country, type: string }
+
+  - name: events
+    format: parquet
+    path: s3://<RAW_BUCKET>/adpa/raw/events/events.parquet
+    schema:
+      - { name: event_id, type: bigint }
+      - { name: ts, type: timestamp }
+      - { name: user_id, type: int }
+      - { name: event_type, type: string }
+      - { name: device, type: string }
+
+  - name: logs
+    format: csv_gz
+    path: s3://<RAW_BUCKET>/adpa/raw/logs/logs.csv.gz
+    schema:
+      - { name: ts, type: timestamp }
+      - { name: level, type: string }
+      - { name: msg, type: string }
