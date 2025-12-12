@@ -41,13 +41,6 @@ if not HAS_SCIPY:
     scipy_mock.linalg = types.ModuleType('scipy.linalg')
     scipy_mock.optimize = types.ModuleType('scipy.optimize')
     scipy_mock.special = types.ModuleType('scipy.special')
-
-    # Treat core namespaces as packages so Python can load nested modules
-    scipy_mock.stats.__path__ = []
-    scipy_mock.sparse.__path__ = []
-    scipy_mock.linalg.__path__ = []
-    scipy_mock.optimize.__path__ = []
-    scipy_mock.special.__path__ = []
     
     # Add required functions to scipy.sparse
     scipy_mock.sparse.issparse = mock_issparse
@@ -82,32 +75,10 @@ if not HAS_SCIPY:
     
     scipy_mock.special.expit = mock_expit
     scipy_mock.special.softmax = mock_softmax
-
-    # Minimal linesearch submodule used by sklearn optimizers
-    linesearch_module = types.ModuleType('scipy.optimize.linesearch')
-
-    def _default_step(*args, **kwargs):
-        """Return a neutral step size when real scipy isn't available."""
-        return 1.0, None, None
-
-    def _default_scalar_search(*args, **kwargs):
-        return 1.0, None, None
-
-    def _default_wolfe(*args, **kwargs):
-        # Return signature-compatible tuple
-        return None, None, None, None, None, None
-
-    linesearch_module.line_search = _default_step
-    linesearch_module.scalar_search_armijo = _default_scalar_search
-    linesearch_module.scalar_search_wolfe2 = _default_scalar_search
-    linesearch_module.line_search_wolfe2 = _default_wolfe
-    linesearch_module.line_search_wolfe1 = _default_wolfe
-    scipy_mock.optimize.linesearch = linesearch_module
     
     sys.modules['scipy'] = scipy_mock
     sys.modules['scipy.stats'] = scipy_mock.stats
     sys.modules['scipy.sparse'] = scipy_mock.sparse
     sys.modules['scipy.linalg'] = scipy_mock.linalg
     sys.modules['scipy.optimize'] = scipy_mock.optimize
-    sys.modules['scipy.optimize.linesearch'] = scipy_mock.optimize.linesearch
     sys.modules['scipy.special'] = scipy_mock.special

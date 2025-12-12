@@ -322,6 +322,16 @@ class ADPADeployer:
                 if CONFIG['ml_libraries']['numpy'] not in ver_dir.name:
                     print(f"      Removing {ver_dir.name}...")
                     shutil.rmtree(ver_dir)
+
+        # Remove large, non-runtime directories to keep layer under AWS limits
+        print(f"   Trimming optional files from layer...", end=" ")
+        removed_bytes = self._cleanup_layer_directory(python_dir)
+        print(f"removed {removed_bytes / (1024 * 1024):.2f} MB")
+
+        total_size = self._get_directory_size(layer_dir)
+        print(f"   Layer size after cleanup: {total_size / (1024 * 1024):.2f} MB (limit 250 MB)")
+        if total_size > 262_144_000:
+            print("   ⚠️  Layer still exceeds Lambda limit; consider reducing dependencies")
         
         # Create ZIP
         print(f"   Creating layer package...")
@@ -339,6 +349,48 @@ class ADPADeployer:
             print(f"   ℹ️  Package > 50MB, will upload via S3")
         
         return True
+
+    def _cleanup_layer_directory(self, python_dir: Path) -> int:
+        """Remove tests, examples, and caches to reduce dependency size"""
+        patterns = [
+            "**/tests", "**/Tests", "**/testing", "**/benchmarks",
+            "**/__pycache__", "**/*.pyc", "**/*.pyo",
+            "**/dist-info/INSTALLER", "**/dist-info/RECORD", "**/dist-info/REQUESTED"
+        ]
+        removed_bytes = 0
+        protected_prefixes = {
+            "numpy/testing",
+        }
+
+        for pattern in patterns:
+            for path in python_dir.glob(pattern):
+                try:
+                    if not path.exists():
+                        continue
+                    rel_path = path.relative_to(python_dir).as_posix()
+                    if any(rel_path.startswith(prefix) for prefix in protected_prefixes):
+                        continue
+                    if path.is_dir():
+                        removed_bytes += self._get_directory_size(path)
+                        shutil.rmtree(path, ignore_errors=True)
+                    else:
+                        removed_bytes += path.stat().st_size
+                        path.unlink()
+                except Exception as cleanup_error:
+                    print(f"\n   ⚠️  Could not remove {path}: {cleanup_error}")
+
+        return removed_bytes
+
+    @staticmethod
+    def _get_directory_size(path: Path) -> int:
+        total = 0
+        for root, _, files in os.walk(path):
+            for name in files:
+                try:
+                    total += os.path.getsize(os.path.join(root, name))
+                except OSError:
+                    continue
+        return total
     
     def _publish_lambda_layer(self) -> bool:
         """Publish Lambda Layer"""

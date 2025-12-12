@@ -1,9 +1,17 @@
 # ADPA Lambda Deployment Status Report
 
-**Timestamp**: 2025-12-01  
+**Timestamp**: 2025-12-12  
 **Target Function**: `adpa-data-processor-development`  
 **Region**: `us-east-2`  
-**Status**: 🔧 **Manual Deployment Required**
+**Status**: ✅ **Live & Healthy**
+
+> ### Latest Update — 2025-12-12
+> - Rebuilt the `adpa-ml-dependencies-clean` Lambda layer (v4) with pandas, numpy, scikit-learn, and SciPy while trimming non-runtime assets to stay under the 250 MB unzipped limit.
+> - Redeployed the Lambda handler package (`adpa-deployment-code.zip`) with the new SageMaker trainer + entrypoint logic.
+> - Verified the function via direct `health_check` invocation — result `"status": "healthy"` (imports/agent/monitoring all `true`).
+> - Added lightweight SciPy compatibility shims for future local runs; production now uses the rebuilt layer with real binaries.
+
+Historical context for the original manual-deployment guidance is preserved below.
 
 ## Issue Summary
 
@@ -126,12 +134,12 @@ python3 boto3_deploy.py
 - [x] Configuration files prepared
 - [x] Dependencies identified and documented
 - [x] Deployment scripts created
-- [ ] AWS credentials configured
-- [ ] Target Lambda function verified to exist
-- [ ] Package creation executed
-- [ ] Code deployment completed
-- [ ] Configuration update applied
-- [ ] Health check test passed
+- [x] AWS credentials configured
+- [x] Target Lambda function verified to exist
+- [x] Package creation executed
+- [x] Code deployment completed
+- [x] Configuration update applied
+- [x] Health check test passed
 
 ## Validation Tests
 

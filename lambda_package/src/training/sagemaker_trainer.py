@@ -11,13 +11,10 @@ instead of Lambda, enabling:
 
 import json
 import os
-import shutil
-import tempfile
-from pathlib import Path
 import boto3
 import time
 from datetime import datetime
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
 from botocore.exceptions import ClientError
 
 # Import centralized AWS configuration
@@ -79,7 +76,6 @@ class SageMakerTrainer:
         self.role_arn = SAGEMAKER_EXECUTION_ROLE
         self.output_bucket = MODEL_BUCKET
         self.training_image = self._get_training_image()
-        self._script_path = Path(__file__).resolve().parent / "scripts" / "random_forest_entrypoint.py"
         
     def _get_training_image(self) -> str:
         """Get the appropriate SageMaker training container image"""
@@ -92,50 +88,6 @@ class SageMakerTrainer:
         }
         account = account_map.get(self.region, '683313688378')
         return f"{account}.dkr.ecr.{self.region}.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3"
-
-    def _build_stopping_condition(
-        self,
-        *,
-        max_runtime_seconds: int,
-        enable_managed_spot_training: bool,
-        max_wait_time_seconds: Optional[int]
-    ) -> Dict[str, int]:
-        """Create the stopping condition block for training jobs."""
-
-        stopping_condition: Dict[str, int] = {
-            'MaxRuntimeInSeconds': max_runtime_seconds
-        }
-
-        if enable_managed_spot_training:
-            wait_time = max_wait_time_seconds or max_runtime_seconds * 2
-            stopping_condition['MaxWaitTimeInSeconds'] = max(wait_time, max_runtime_seconds)
-
-        return stopping_condition
-
-    def _should_use_script_mode(self, algorithm: str) -> bool:
-        return algorithm in {'random_forest', 'sklearn', 'custom'}
-
-    def _prepare_entry_point_archive(self, job_name: str) -> Tuple[str, str]:
-        """Package the default sklearn entry point and upload it to S3."""
-
-        if not self._script_path.exists():
-            raise FileNotFoundError(f"Training script not found at {self._script_path}")
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmp_path = Path(tmpdir)
-            program_name = 'train.py'
-            dest_script = tmp_path / program_name
-            shutil.copy2(self._script_path, dest_script)
-            archive_path = shutil.make_archive(
-                base_name=str(tmp_path / 'code'),
-                format='gztar',
-                root_dir=tmp_path
-            )
-
-            s3_key = f"code/{job_name}/code.tar.gz"
-            self.s3.upload_file(archive_path, self.output_bucket, s3_key)
-
-        return f"s3://{self.output_bucket}/{s3_key}", program_name
     
     def create_training_job(
         self,
@@ -144,9 +96,7 @@ class SageMakerTrainer:
         algorithm: str = 'random_forest',
         hyperparameters: Optional[Dict[str, str]] = None,
         instance_type: str = 'ml.m5.xlarge',
-        max_runtime_seconds: int = 3600,
-        enable_managed_spot_training: bool = True,
-        max_wait_time_seconds: Optional[int] = None
+        max_runtime_seconds: int = 3600
     ) -> Dict[str, Any]:
         """
         Create and start a SageMaker training job
@@ -165,28 +115,11 @@ class SageMakerTrainer:
         # Default hyperparameters
         if hyperparameters is None:
             hyperparameters = {
-                'n_estimators': 100,
-                'max_depth': 10,
-                'min_samples_split': 2,
-                'target_column': 'target'
+                'n_estimators': '100',
+                'max_depth': '10',
+                'min_samples_split': '2',
+                'algorithm': algorithm
             }
-
-        if self._should_use_script_mode(algorithm):
-            submit_dir, program_name = self._prepare_entry_point_archive(job_name)
-            hyperparameters.setdefault('target_column', 'target')
-            hyperparameters.setdefault('test_size', 0.2)
-            hyperparameters.setdefault('random_state', 42)
-            hyperparameters.update({
-                'sagemaker_program': program_name,
-                'sagemaker_submit_directory': submit_dir,
-                'sagemaker_container_log_level': '20',
-                'sagemaker_job_name': job_name,
-                'sagemaker_region': self.region
-            })
-        else:
-            hyperparameters.setdefault('algorithm', algorithm)
-
-        hyperparameters = {k: str(v) for k, v in hyperparameters.items()}
         
         try:
             response = self.sagemaker.create_training_job(
@@ -221,14 +154,12 @@ class SageMakerTrainer:
                     'InstanceCount': 1,
                     'VolumeSizeInGB': 30
                 },
-                StoppingCondition=self._build_stopping_condition(
-                    max_runtime_seconds=max_runtime_seconds,
-                    enable_managed_spot_training=enable_managed_spot_training,
-                    max_wait_time_seconds=max_wait_time_seconds
-                ),
+                StoppingCondition={
+                    'MaxRuntimeInSeconds': max_runtime_seconds
+                },
                 EnableNetworkIsolation=False,
                 EnableInterContainerTrafficEncryption=False,
-                EnableManagedSpotTraining=enable_managed_spot_training,
+                EnableManagedSpotTraining=True,  # Cost optimization
                 Tags=[
                     {'Key': 'Project', 'Value': 'ADPA'},
                     {'Key': 'Environment', 'Value': 'development'},
