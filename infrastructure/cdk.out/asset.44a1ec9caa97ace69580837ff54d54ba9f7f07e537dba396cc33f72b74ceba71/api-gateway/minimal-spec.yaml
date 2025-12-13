@@ -1,0 +1,115 @@
+openapi: 3.0.0
+info:
+  title: ADPA ML Pipeline API
+  description: RESTful API for managing ADPA autonomous data pipeline and ML workflows
+  version: 1.0.0
+
+servers:
+  - url: https://lvojiw3qc9.execute-api.us-east-2.amazonaws.com/v1
+    description: AWS API Gateway endpoint
+
+paths:
+  /health:
+    get:
+      summary: Health check endpoint
+      description: Verify API and Lambda function health
+      operationId: healthCheck
+      responses:
+        '200':
+          description: System is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  timestamp:
+                    type: string
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-data-processor-development/invocations
+        passthroughBehavior: when_no_match
+
+  /pipelines:
+    post:
+      summary: Create new ML pipeline
+      description: Start a new machine learning pipeline execution
+      operationId: createPipeline
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                objective:
+                  type: string
+                  description: Natural language description of ML objective
+                dataset_path:
+                  type: string
+                  description: S3 path to dataset
+      responses:
+        '201':
+          description: Pipeline created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  pipeline_id:
+                    type: string
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-data-processor-development/invocations
+        passthroughBehavior: when_no_match
+
+    get:
+      summary: List pipelines
+      description: Get a list of recent pipeline executions
+      operationId: listPipelines
+      responses:
+        '200':
+          description: List of pipelines
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pipelines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        pipeline_id:
+                          type: string
+                        status:
+                          type: string
+                        start_time:
+                          type: string
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: arn:aws:apigateway:us-east-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-2:083308938449:function:adpa-data-processor-development/invocations
+        passthroughBehavior: when_no_match
+
+x-amazon-apigateway-gateway-responses:
+  DEFAULT_4XX:
+    responseParameters:
+      gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+  DEFAULT_5XX:
+    responseParameters:
+      gatewayresponse.header.Access-Control-Allow-Origin: "'*'"

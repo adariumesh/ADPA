@@ -221,11 +221,18 @@ class ADPALambdaOrchestrator:
                 execution_name=f"lambda-execution-{int(datetime.utcnow().timestamp())}",
             )
 
+            execution_summary = self.stepfunctions.summarize_execution(  # type: ignore[union-attr]
+                execution_result.get("execution_arn")
+            )
+
             self._publish_metrics(execution_result)
             self._track_kpis(execution_result)
 
-            return {
-                "status": "completed",
+            pipeline_status = execution_result.get("status", "FAILED")
+            normalized_status = "completed" if pipeline_status == "SUCCEEDED" else "failed"
+
+            response_payload = {
+                "status": normalized_status,
                 "execution_mode": "real_aws",
                 "state_machine_arn": state_machine_arn,
                 "execution_arn": execution_result.get("execution_arn"),
@@ -233,7 +240,15 @@ class ADPALambdaOrchestrator:
                 "pipeline_id": execution_input["pipeline_id"],
                 "dashboard_url": self._get_dashboard_url(),
                 "timestamp": datetime.utcnow().isoformat(),
+                "execution_result": execution_result,
             }
+
+            response_payload.update(execution_summary)
+
+            if pipeline_status != "SUCCEEDED":
+                response_payload["error"] = execution_result.get("error") or execution_result.get("cause")
+
+            return response_payload
 
         except Exception as exc:  # pragma: no cover - defensive logging
             error_msg = f"Real pipeline execution failed: {exc}"

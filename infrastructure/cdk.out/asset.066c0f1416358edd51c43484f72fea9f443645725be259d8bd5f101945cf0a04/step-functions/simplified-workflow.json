@@ -1,0 +1,136 @@
+{
+  "Comment": "ADPA Simplified ML Pipeline - Core autonomous workflow",
+  "StartAt": "DataIngestion",
+  "States": {
+    "DataIngestion": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-east-2:083308938449:function:adpa-lambda-function",
+      "Parameters": {
+        "action": "ingest_data",
+        "data_path.$": "$.data_path",
+        "objective.$": "$.objective"
+      },
+      "ResultPath": "$.ingestion_result",
+      "Next": "DataCleaning",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "NotifyFailure"
+        }
+      ]
+    },
+    "DataCleaning": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-east-2:083308938449:function:adpa-lambda-function",
+      "Parameters": {
+        "action": "clean_data",
+        "data.$": "$.ingestion_result.data",
+        "strategy": "intelligent"
+      },
+      "ResultPath": "$.cleaning_result",
+      "Next": "FeatureEngineering",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "NotifyFailure"
+        }
+      ]
+    },
+    "FeatureEngineering": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-east-2:083308938449:function:adpa-lambda-function",
+      "Parameters": {
+        "action": "engineer_features",
+        "data.$": "$.cleaning_result.data",
+        "objective.$": "$.objective"
+      },
+      "ResultPath": "$.feature_result",
+      "Next": "ModelTraining",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "NotifyFailure"
+        }
+      ]
+    },
+    "ModelTraining": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sagemaker:createTrainingJob.sync",
+      "Parameters": {
+        "TrainingJobName.$": "$.training_job_name",
+        "RoleArn": "arn:aws:iam::083308938449:role/adpa-sagemaker-execution-role",
+        "AlgorithmSpecification": {
+          "TrainingImage": "683313688378.dkr.ecr.us-east-2.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3",
+          "TrainingInputMode": "File"
+        },
+        "InputDataConfig": [
+          {
+            "ChannelName": "training",
+            "DataSource": {
+              "S3DataSource": {
+                "S3DataType": "S3Prefix",
+                "S3Uri.$": "$.feature_result.training_data_s3",
+                "S3DataDistributionType": "FullyReplicated"
+              }
+            },
+            "ContentType": "text/csv"
+          }
+        ],
+        "OutputDataConfig": {
+          "S3OutputPath": "s3://adpa-models-083308938449-production/sagemaker-output/"
+        },
+        "ResourceConfig": {
+          "InstanceType": "ml.m5.large",
+          "InstanceCount": 1,
+          "VolumeSizeInGB": 10
+        },
+        "StoppingCondition": {
+          "MaxRuntimeInSeconds": 3600
+        }
+      },
+      "ResultPath": "$.training_result",
+      "Next": "ModelEvaluation",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "NotifyFailure"
+        }
+      ]
+    },
+    "ModelEvaluation": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-east-2:083308938449:function:adpa-lambda-function",
+      "Parameters": {
+        "action": "evaluate_model",
+        "model_artifacts.$": "$.training_result.ModelArtifacts.S3ModelArtifacts",
+        "test_data.$": "$.feature_result.test_data_s3"
+      },
+      "ResultPath": "$.evaluation_result",
+      "Next": "NotifySuccess"
+    },
+    "NotifySuccess": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:us-east-2:083308938449:adpa-pipeline-notifications",
+        "Subject": "ADPA Pipeline Success",
+        "Message.$": "States.Format('Pipeline {} completed successfully. Accuracy: {}', $.training_job_name, $.evaluation_result.accuracy)"
+      },
+      "End": true
+    },
+    "NotifyFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:us-east-2:083308938449:adpa-pipeline-notifications",
+        "Subject": "ADPA Pipeline Failure",
+        "Message.$": "States.Format('Pipeline failed: {}', $.error.Error)"
+      },
+      "End": true
+    }
+  }
+}

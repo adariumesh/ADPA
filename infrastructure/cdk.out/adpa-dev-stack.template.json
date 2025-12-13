@@ -304,17 +304,90 @@
        "Statement": [
         {
          "Action": [
+          "states:CreateStateMachine",
+          "states:DeleteStateMachine",
+          "states:ListActivities",
+          "states:ListStateMachines",
+          "states:TagResource",
+          "states:UntagResource",
+          "states:UpdateStateMachine"
+         ],
+         "Effect": "Allow",
+         "Resource": "*"
+        },
+        {
+         "Action": [
           "states:DescribeExecution",
+          "states:DescribeStateMachine",
+          "states:DescribeStateMachineForExecution",
+          "states:GetExecutionHistory",
+          "states:ListExecutions",
           "states:StartExecution",
           "states:StopExecution"
          ],
          "Effect": "Allow",
-         "Resource": "arn:aws:states:us-east-2:083308938449:stateMachine:adpa-dev-*"
+         "Resource": [
+          "arn:aws:states:us-east-2:083308938449:execution:adpa-*:*",
+          "arn:aws:states:us-east-2:083308938449:execution:adpa-dev-*:*",
+          "arn:aws:states:us-east-2:083308938449:stateMachine:adpa-*",
+          "arn:aws:states:us-east-2:083308938449:stateMachine:adpa-dev-*"
+         ]
         }
        ],
        "Version": "2012-10-17"
       },
       "PolicyName": "StepFunctionsAccess"
+     },
+     {
+      "PolicyDocument": {
+       "Statement": [
+        {
+         "Action": [
+          "logs:CreateLogGroup",
+          "logs:PutRetentionPolicy",
+          "logs:TagResource"
+         ],
+         "Effect": "Allow",
+         "Resource": "arn:aws:logs:us-east-2:083308938449:log-group:*"
+        }
+       ],
+       "Version": "2012-10-17"
+      },
+      "PolicyName": "CloudWatchLogsTagging"
+     },
+     {
+      "PolicyDocument": {
+       "Statement": [
+        {
+         "Action": [
+          "glue:BatchStopJobRun",
+          "glue:CreateCrawler",
+          "glue:CreateDatabase",
+          "glue:CreateJob",
+          "glue:CreateTable",
+          "glue:DeleteCrawler",
+          "glue:GetCrawler",
+          "glue:GetCrawlers",
+          "glue:GetDatabase",
+          "glue:GetDatabases",
+          "glue:GetJob",
+          "glue:GetJobRun",
+          "glue:GetJobRuns",
+          "glue:GetJobs",
+          "glue:GetTable",
+          "glue:GetTables",
+          "glue:StartCrawler",
+          "glue:StartJobRun",
+          "glue:UpdateCrawler",
+          "glue:UpdateJob"
+         ],
+         "Effect": "Allow",
+         "Resource": "*"
+        }
+       ],
+       "Version": "2012-10-17"
+      },
+      "PolicyName": "GlueAccess"
      }
     ],
     "RoleName": "adpa-dev-lambda-execution-role"
@@ -328,6 +401,16 @@
    "Properties": {
     "PolicyDocument": {
      "Statement": [
+      {
+       "Action": "iam:PassRole",
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::GetAtt": [
+         "StepFunctionsExecutionRole5B21F5A6",
+         "Arn"
+        ]
+       }
+      },
       {
        "Action": [
         "xray:PutTelemetryRecords",
@@ -514,7 +597,7 @@
    "Properties": {
     "Code": {
      "S3Bucket": "cdk-hnb659fds-assets-083308938449-us-east-2",
-     "S3Key": "916a5aa0addbc8e7752aff93de242f41d95e8831693516235503f48cc4d505d4.zip"
+     "S3Key": "44a1ec9caa97ace69580837ff54d54ba9f7f07e537dba396cc33f72b74ceba71.zip"
     },
     "Role": {
      "Fn::GetAtt": [
@@ -552,7 +635,7 @@
    ],
    "Metadata": {
     "aws:cdk:path": "adpa-dev-stack/ApiFunction/Resource",
-    "aws:asset:path": "asset.916a5aa0addbc8e7752aff93de242f41d95e8831693516235503f48cc4d505d4",
+    "aws:asset:path": "asset.44a1ec9caa97ace69580837ff54d54ba9f7f07e537dba396cc33f72b74ceba71",
     "aws:asset:is-bundled": false,
     "aws:asset:property": "Code"
    }
@@ -2246,7 +2329,7 @@
   "CDKMetadata": {
    "Type": "AWS::CDK::Metadata",
    "Properties": {
-    "Analytics": "v2:deflate64:H4sIAAAAAAAA/12RTU8CMRCGf4v3UhUOel0wniSShXglQzsuhW677kzdbJr+d9MuBvT0PjNv2/noXD4/yYc7GGim9HlmzUHGLYM6CxhoH2kh4zKoM7JYfboLTbIEwiT06KD1+iDjDg4W86kCSRhoZaz9lCu68daoMYcTJWGhPWiQ8TU4xca77N3yBvvWEBnvkqDFHoiQSVZZhPUNyTff1MjoygXoTAOMA4wy1khcdabUvmKllA+OxQt21o8tujLWTbRlaErDE9RIPvQK86xijXz0OpsX+nUvRSau8Ssg8QdYo4F9P5n/cmuv0ZaXMiRBjmTc+c6ossAMSSjrgx6A1VHGykLflgkypHStXZaRuzWu+dPI6tO9B+4CJ+G8Rnmi++/5XD7m7z6RMbM+ODYtynrSH9RM+6sKAgAA"
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/12QTU8CMRCGfwv3MvJholfQeJJIFuKVzLbDUui2604rIU3/u2kXA3p6n5m3na8ZPD/BZIRnHkt1GhtdQ9x4lCeBZ95FnkNcBnkiL1729kqDLJEpCXWx2DpVQ9xibSi/KpCExhZi5YZc0bUzWl5yOFASBttaIcS3YKXXzmbvntfUt5pZO5sEz3fITJ5hkUUY1zC8u6YiT7Z8wE436OmMF4gVsV90uvS+4UJKF6wXr9QZd2nJlrXuoo3Hpgw8QEXsQi8p7ypW5A9OZfNKv+61ycAVfQVi/4lGK/SuH8x/uZVTZEqlDEmwZYhb12lZDpghCWlcUGf08gBxYbBvywYZUrr1LsfI02rb/BnkZW8/gu+CT8I6RXDkh+/ZI0ynMBkdWetxH6zXLUE16A9DQ5+nCgIAAA=="
    },
    "Metadata": {
     "aws:cdk:path": "adpa-dev-stack/CDKMetadata/Default"

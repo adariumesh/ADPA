@@ -33,6 +33,19 @@
 - **Console URL:** https://console.aws.amazon.com/iam/home#/roles/adpa-lambda-execution-role-development
 - **Permissions:** S3 access, CloudWatch Logs, Lambda execution
 
+#### ✅ Required Step Functions permissions for real metrics
+To let `use_real_aws=true` create dynamic Step Functions workflows and stream real SageMaker metrics back into DynamoDB, the Lambda execution role now needs full pipeline management permissions. Apply the bundled policy once per environment:
+
+```bash
+aws iam put-role-policy \
+  --region us-east-2 \
+  --role-name adpa-lambda-execution-role-development \
+  --policy-name adpa-stepfunctions-full-access \
+  --policy-document file://infrastructure/policies/lambda-stepfunctions-access.json
+```
+
+After attaching the policy, run `aws stepfunctions list-state-machines --region us-east-2` from the same credentials to confirm the Lambda role can see the `adpa-*` workflows. The Lambda logs will now show `simulation_mode=False`, and end-to-end executions will publish live metrics instead of zeros.
+
 ### 5. CloudWatch Logs
 - **Log Group:** `/aws/lambda/adpa-data-processor-development`
 - **Console URL:** https://us-east-2.console.aws.amazon.com/cloudwatch/home?region=us-east-2#logsV2:log-groups/log-group/$252Faws$252Flambda$252Fadpa-data-processor-development

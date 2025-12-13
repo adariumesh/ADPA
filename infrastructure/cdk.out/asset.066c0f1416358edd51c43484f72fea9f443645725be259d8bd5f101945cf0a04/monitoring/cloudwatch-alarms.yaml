@@ -1,0 +1,268 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudWatch Alarms and SNS Notifications for ADPA ML Pipeline'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: development
+    AllowedValues:
+      - development
+      - production
+    Description: Environment name
+  
+  EmailAddress:
+    Type: String
+    Description: Email address for alarm notifications
+    Default: umeshka@umd.edu
+
+Resources:
+  # SNS Topic for notifications
+  ADPANotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: adpa-pipeline-notifications
+      DisplayName: ADPA ML Pipeline Notifications
+      Subscription:
+        - Endpoint: !Ref EmailAddress
+          Protocol: email
+      Tags:
+        - Key: Project
+          Value: ADPA
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Lambda Error Rate Alarm
+  LambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: adpa-lambda-error-rate
+      AlarmDescription: Alert when Lambda error rate exceeds 5%
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: adpa-data-processor-development
+      AlarmActions:
+        - !Ref ADPANotificationTopic
+      TreatMissingData: notBreaching
+      Tags:
+        - Key: Project
+          Value: ADPA
+
+  # Lambda Duration Alarm (> 30 minutes)
+  LambdaDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: adpa-lambda-long-duration
+      AlarmDescription: Alert when Lambda execution exceeds 30 minutes
+      MetricName: Duration
+      Namespace: AWS/Lambda
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1800000  # 30 minutes in milliseconds
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: adpa-data-processor-development
+      AlarmActions:
+        - !Ref ADPANotificationTopic
+      TreatMissingData: notBreaching
+
+  # Lambda Memory Usage Alarm (> 90%)
+  LambdaMemoryAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: adpa-lambda-high-memory
+      AlarmDescription: Alert when Lambda memory usage exceeds 90%
+      MetricName: MemoryUtilization
+      Namespace: AWS/Lambda
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 90
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: adpa-data-processor-development
+      AlarmActions:
+        - !Ref ADPANotificationTopic
+      TreatMissingData: notBreaching
+
+  # Lambda Throttle Alarm
+  LambdaThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: adpa-lambda-throttles
+      AlarmDescription: Alert when Lambda function is throttled
+      MetricName: Throttles
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: adpa-data-processor-development
+      AlarmActions:
+        - !Ref ADPANotificationTopic
+      TreatMissingData: notBreaching
+
+  # Step Functions Failed Executions Alarm
+  StepFunctionsFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: adpa-stepfunctions-failures
+      AlarmDescription: Alert when Step Functions executions fail
+      MetricName: ExecutionsFailed
+      Namespace: AWS/States
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: StateMachineArn
+          Value: !Sub 'arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:adpa-ml-pipeline'
+      AlarmActions:
+        - !Ref ADPANotificationTopic
+      TreatMissingData: notBreaching
+
+  # Cost Alarm (Monthly spend > $50)
+  MonthlyCostAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: adpa-monthly-cost-exceeded
+      AlarmDescription: Alert when estimated monthly cost exceeds $50
+      MetricName: EstimatedCharges
+      Namespace: AWS/Billing
+      Statistic: Maximum
+      Period: 21600  # 6 hours
+      EvaluationPeriods: 1
+      Threshold: 50
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: Currency
+          Value: USD
+      AlarmActions:
+        - !Ref ADPANotificationTopic
+      TreatMissingData: notBreaching
+
+  # SageMaker Training Job Failure Alarm
+  SageMakerFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: adpa-sagemaker-training-failures
+      AlarmDescription: Alert when SageMaker training jobs fail
+      MetricName: TrainingJobsFailed
+      Namespace: AWS/SageMaker
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref ADPANotificationTopic
+      TreatMissingData: notBreaching
+
+  # Custom Metric: Model Accuracy Drop Alarm
+  ModelAccuracyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: adpa-model-accuracy-degradation
+      AlarmDescription: Alert when model accuracy drops below 75%
+      MetricName: ModelAccuracy
+      Namespace: ADPA/Metrics
+      Statistic: Average
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 0.75
+      ComparisonOperator: LessThanThreshold
+      AlarmActions:
+        - !Ref ADPANotificationTopic
+      TreatMissingData: notBreaching
+
+  # Dashboard for monitoring
+  ADPADashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: ADPA-ML-Pipeline-Monitoring
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric",
+              "properties": {
+                "metrics": [
+                  ["AWS/Lambda", "Invocations", {"stat": "Sum", "label": "Invocations"}],
+                  [".", "Errors", {"stat": "Sum", "label": "Errors"}],
+                  [".", "Throttles", {"stat": "Sum", "label": "Throttles"}]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "title": "Lambda Function Metrics",
+                "dimensions": {
+                  "FunctionName": ["adpa-data-processor-development"]
+                }
+              }
+            },
+            {
+              "type": "metric",
+              "properties": {
+                "metrics": [
+                  ["AWS/Lambda", "Duration", {"stat": "Average"}],
+                  ["...", {"stat": "Maximum"}]
+                ],
+                "period": 300,
+                "stat": "Average",
+                "region": "${AWS::Region}",
+                "title": "Lambda Duration",
+                "yAxis": {
+                  "left": {
+                    "label": "Milliseconds"
+                  }
+                }
+              }
+            },
+            {
+              "type": "metric",
+              "properties": {
+                "metrics": [
+                  ["AWS/States", "ExecutionsStarted", {"stat": "Sum"}],
+                  [".", "ExecutionsSucceeded", {"stat": "Sum"}],
+                  [".", "ExecutionsFailed", {"stat": "Sum"}]
+                ],
+                "period": 300,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "title": "Step Functions Executions"
+              }
+            },
+            {
+              "type": "log",
+              "properties": {
+                "query": "SOURCE '/aws/lambda/adpa-data-processor-development'\n| fields @timestamp, @message\n| filter @message like /ERROR/\n| sort @timestamp desc\n| limit 20",
+                "region": "${AWS::Region}",
+                "title": "Recent Errors"
+              }
+            }
+          ]
+        }
+
+Outputs:
+  SNSTopicArn:
+    Description: SNS Topic ARN for notifications
+    Value: !Ref ADPANotificationTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-SNSTopicArn'
+  
+  DashboardURL:
+    Description: CloudWatch Dashboard URL
+    Value: !Sub 'https://console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=ADPA-ML-Pipeline-Monitoring'

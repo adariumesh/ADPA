@@ -1,0 +1,44 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "StepFunctionsManagement",
+      "Effect": "Allow",
+      "Action": [
+        "states:CreateStateMachine",
+        "states:DeleteStateMachine",
+        "states:UpdateStateMachine",
+        "states:ListStateMachines",
+        "states:ListActivities",
+        "states:TagResource",
+        "states:UntagResource"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "StepFunctionsExecution",
+      "Effect": "Allow",
+      "Action": [
+        "states:StartExecution",
+        "states:StopExecution",
+        "states:DescribeExecution",
+        "states:GetExecutionHistory",
+        "states:ListExecutions",
+        "states:DescribeStateMachine",
+        "states:DescribeStateMachineForExecution"
+      ],
+      "Resource": [
+        "arn:aws:states:us-east-2:083308938449:stateMachine:adpa-*",
+        "arn:aws:states:us-east-2:083308938449:stateMachine:adpa-*-*",
+        "arn:aws:states:us-east-2:083308938449:execution:adpa-*:*",
+        "arn:aws:states:us-east-2:083308938449:execution:adpa-*-*:*"
+      ]
+    },
+    {
+      "Sid": "AllowPassStepFunctionsRole",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::083308938449:role/adpa-stepfunctions-role"
+    }
+  ]
+}

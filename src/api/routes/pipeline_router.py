@@ -146,14 +146,14 @@ class PipelineRouter:
                 logger.info("🤖 Pipeline %s: Using REAL AI (Bedrock) only", pipeline_id)
                 result = self.orchestrator.run_pipeline(pipeline_event)
 
-            real_execution_data = self._create_real_execution_data(
-                pipeline_id=pipeline_id,
-                pipeline_type=pipeline_type,
-                objective=objective,
-                result=result,
-            )
-
-            result.update(real_execution_data)
+            if not result.get("steps"):
+                real_execution_data = self._create_real_execution_data(
+                    pipeline_id=pipeline_id,
+                    pipeline_type=pipeline_type,
+                    objective=objective,
+                    result=result,
+                )
+                result.update(real_execution_data)
 
             self._update_pipeline_record(pipeline_id, result)
 
@@ -707,6 +707,16 @@ class PipelineRouter:
                 logger.info("🤖 Using FULL AI REASONING for pipeline %s", pipeline_id)
                 result = self.orchestrator.run_pipeline(pipeline_event)
 
+            if use_real_aws and result and not result.get("steps"):
+                result.update(
+                    self._create_real_execution_data(
+                        pipeline_id=pipeline_id,
+                        pipeline_type=config.get("type", "classification"),
+                        objective=objective,
+                        result=result,
+                    )
+                )
+
             if result and result.get("status") == "completed":
                 self.pipeline_store[pipeline_id]["status"] = "completed"
                 self.pipeline_store[pipeline_id]["completed_at"] = datetime.utcnow().isoformat()
@@ -776,6 +786,8 @@ class PipelineRouter:
                     real_steps = json.loads(item["steps"]["S"])
                 if "logs" in item:
                     real_logs = json.loads(item["logs"]["S"])
+                if "metrics" in item:
+                    real_metrics = json.loads(item["metrics"]["S"])
 
                 return {
                     "id": f"exec-{pipeline_id}",
@@ -842,7 +854,7 @@ class PipelineRouter:
         dynamodb = boto3.client("dynamodb", region_name=self.region)
         if result.get("status") == "completed":
             update_expression = (
-                "SET #status = :status, completed_at = :completed_at, #result = :result, steps = :steps, logs = :logs"
+                "SET #status = :status, completed_at = :completed_at, #result = :result, steps = :steps, logs = :logs, metrics = :metrics"
             )
             expression_attribute_names = {
                 "#status": "status",
@@ -854,6 +866,7 @@ class PipelineRouter:
                 ":result": {"S": json.dumps(result)},
                 ":steps": {"S": json.dumps(result.get("steps", []))},
                 ":logs": {"S": json.dumps(result.get("logs", []))},
+                ":metrics": {"S": json.dumps(result.get("performance_metrics", {}))},
             }
         else:
             update_expression = "SET #status = :status, #error = :error"

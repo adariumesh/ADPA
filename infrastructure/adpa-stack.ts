@@ -159,11 +159,78 @@ export class AdpaStack extends cdk.Stack {
             new iam.PolicyStatement({
               effect: iam.Effect.ALLOW,
               actions: [
-                'states:StartExecution',
-                'states:DescribeExecution',
-                'states:StopExecution',
+                'states:CreateStateMachine',
+                'states:DeleteStateMachine',
+                'states:UpdateStateMachine',
+                'states:ListStateMachines',
+                'states:TagResource',
+                'states:UntagResource',
+                'states:ListActivities',
               ],
-              resources: [`arn:aws:states:${this.region}:${this.account}:stateMachine:${resourcePrefix}-*`],
+              resources: ['*'],
+            }),
+            new iam.PolicyStatement({
+              effect: iam.Effect.ALLOW,
+              actions: [
+                'states:StartExecution',
+                'states:StopExecution',
+                'states:DescribeExecution',
+                'states:GetExecutionHistory',
+                'states:ListExecutions',
+                'states:DescribeStateMachine',
+                'states:DescribeStateMachineForExecution',
+              ],
+              resources: [
+                `arn:aws:states:${this.region}:${this.account}:stateMachine:${resourcePrefix}-*`,
+                `arn:aws:states:${this.region}:${this.account}:stateMachine:adpa-*`,
+                `arn:aws:states:${this.region}:${this.account}:execution:${resourcePrefix}-*:*`,
+                `arn:aws:states:${this.region}:${this.account}:execution:adpa-*:*`,
+              ],
+            }),
+          ],
+        }),
+        CloudWatchLogsTagging: new iam.PolicyDocument({
+          statements: [
+            new iam.PolicyStatement({
+              effect: iam.Effect.ALLOW,
+              actions: [
+                'logs:CreateLogGroup',
+                'logs:TagResource',
+                'logs:PutRetentionPolicy',
+              ],
+              resources: [
+                `arn:aws:logs:${this.region}:${this.account}:log-group:*`,
+              ],
+            }),
+          ],
+        }),
+        GlueAccess: new iam.PolicyDocument({
+          statements: [
+            new iam.PolicyStatement({
+              effect: iam.Effect.ALLOW,
+              actions: [
+                'glue:CreateDatabase',
+                'glue:GetDatabase',
+                'glue:GetDatabases',
+                'glue:CreateTable',
+                'glue:GetTable',
+                'glue:GetTables',
+                'glue:CreateCrawler',
+                'glue:UpdateCrawler',
+                'glue:GetCrawler',
+                'glue:GetCrawlers',
+                'glue:StartCrawler',
+                'glue:DeleteCrawler',
+                'glue:CreateJob',
+                'glue:UpdateJob',
+                'glue:GetJob',
+                'glue:GetJobs',
+                'glue:StartJobRun',
+                'glue:GetJobRun',
+                'glue:GetJobRuns',
+                'glue:BatchStopJobRun',
+              ],
+              resources: ['*'],
             }),
           ],
         }),
@@ -237,6 +304,12 @@ export class AdpaStack extends cdk.Stack {
         }),
       },
     });
+
+    lambdaRole.addToPrincipalPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['iam:PassRole'],
+      resources: [stepFunctionsRole.roleArn],
+    }));
 
     // =================
     // LAMBDA FUNCTION

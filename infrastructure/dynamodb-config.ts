@@ -115,33 +115,36 @@ export class ADPADynamoDBConfig extends Construct {
     // Production backup schedule (daily + monthly)
     if (environment === 'prod') {
       // Daily backups retained for 35 days
-      this.backupPlan.addRule(backup.BackupPlanRule.daily(this.backupVault, {
-        ruleName: 'DailyBackups',
-        deleteAfter: cdk.Duration.days(35),
-        moveToColdStorageAfter: cdk.Duration.days(7),
-        scheduleExpression: events.Schedule.cron({ hour: '2', minute: '0' }), // 2 AM UTC
-      }));
+        this.backupPlan.addRule(new backup.BackupPlanRule({
+          ruleName: 'DailyBackups',
+          deleteAfter: cdk.Duration.days(35),
+          moveToColdStorageAfter: cdk.Duration.days(7),
+          backupVault: this.backupVault,
+          scheduleExpression: events.Schedule.cron({ hour: '2', minute: '0' }), // 2 AM UTC
+        }));
 
       // Monthly backups retained for 1 year
-      this.backupPlan.addRule(backup.BackupPlanRule.monthly1Year(this.backupVault, {
-        ruleName: 'MonthlyBackups',
-        scheduleExpression: events.Schedule.cron({ 
-          hour: '3', 
-          minute: '0', 
-          day: '1' 
-        }), // 1st of month at 3 AM UTC
-      }));
+        this.backupPlan.addRule(new backup.BackupPlanRule({
+          ruleName: 'MonthlyBackups',
+          backupVault: this.backupVault,
+          scheduleExpression: events.Schedule.cron({ 
+            hour: '3', 
+            minute: '0', 
+            day: '1' 
+          }), // 1st of month at 3 AM UTC
+        }));
     } else {
       // Development/staging: weekly backups retained for 2 weeks
-      this.backupPlan.addRule(backup.BackupPlanRule.weekly(this.backupVault, {
-        ruleName: 'WeeklyBackups',
-        deleteAfter: cdk.Duration.days(14),
-        scheduleExpression: events.Schedule.cron({ 
-          hour: '4', 
-          minute: '0', 
-          weekDay: 'SUN' 
-        }), // Sunday at 4 AM UTC
-      }));
+        this.backupPlan.addRule(new backup.BackupPlanRule({
+          ruleName: 'WeeklyBackups',
+          deleteAfter: cdk.Duration.days(14),
+          backupVault: this.backupVault,
+          scheduleExpression: events.Schedule.cron({ 
+            hour: '4', 
+            minute: '0', 
+            weekDay: 'SUN' 
+          }), // Sunday at 4 AM UTC
+        }));
     }
 
     // Add DynamoDB table to backup plan

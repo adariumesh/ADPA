@@ -8,7 +8,7 @@ import boto3
 import time
 from typing import Dict, List, Any, Optional
 from botocore.exceptions import ClientError
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ...agent.core.interfaces import ExecutionResult, StepStatus
 
@@ -357,7 +357,7 @@ class StepFunctionsOrchestrator:
             self.logger.error(error_msg)
             return {'status': 'MONITORING_FAILED', 'error': error_msg}
     
-    def get_execution_history(self, execution_arn: str) -> List[Dict[str, Any]]:
+    def get_execution_history(self, execution_arn: str, reverse_order: bool = False) -> List[Dict[str, Any]]:
         """
         Get detailed execution history for debugging and analysis.
         
@@ -379,12 +379,12 @@ class StepFunctionsOrchestrator:
                     response = self.client.get_execution_history(
                         executionArn=execution_arn,
                         nextToken=next_token,
-                        reverseOrder=True
+                        reverseOrder=reverse_order
                     )
                 else:
                     response = self.client.get_execution_history(
                         executionArn=execution_arn,
-                        reverseOrder=True
+                        reverseOrder=reverse_order
                     )
                 
                 events.extend(response['events'])
@@ -398,6 +398,129 @@ class StepFunctionsOrchestrator:
         except Exception as e:
             self.logger.error(f"Error getting execution history: {e}")
             return []
+
+    def summarize_execution(self, execution_arn: str) -> Dict[str, Any]:
+        """Build a human-friendly execution summary from Step Functions history."""
+        if self.simulation_mode or not execution_arn:
+            return {
+                'steps': [],
+                'logs': [],
+                'performance_metrics': {},
+                'execution_time': 0,
+                'samples_processed': 0,
+                'features_used': 0
+            }
+
+        try:
+            execution_details = self.client.describe_execution(executionArn=execution_arn)
+        except Exception as exc:  # pragma: no cover - best effort telemetry
+            self.logger.error(f"Unable to describe execution {execution_arn}: {exc}")
+            execution_details = {}
+
+        history = self.get_execution_history(execution_arn, reverse_order=False)
+        steps: List[Dict[str, Any]] = []
+        logs: List[str] = []
+        performance_metrics: Dict[str, Any] = {}
+        step_entries: Dict[str, Dict[str, Any]] = {}
+
+        start_time = execution_details.get('startDate')
+        stop_time = execution_details.get('stopDate')
+        status = execution_details.get('status', 'UNKNOWN')
+        execution_output: Dict[str, Any] = {}
+
+        raw_output = execution_details.get('output')
+        if isinstance(raw_output, str):
+            try:
+                execution_output = json.loads(raw_output)
+            except json.JSONDecodeError:
+                execution_output = {}
+        elif isinstance(raw_output, dict):
+            execution_output = raw_output
+
+        def _iso(ts: Optional[datetime]) -> Optional[str]:
+            if not ts:
+                return None
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            return ts.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+        for event in history:
+            event_type = event.get('type', '')
+            timestamp = event.get('timestamp')
+
+            if event_type.endswith('StateEntered'):
+                details = event.get('stateEnteredEventDetails', {})
+                state_name = details.get('name')
+                if not state_name:
+                    continue
+                step_entries[state_name] = {
+                    'start': timestamp,
+                    'input': details.get('input')
+                }
+                logs.append(f"[ENTER] {state_name} at {timestamp.isoformat() if timestamp else 'unknown'}")
+
+            elif event_type.endswith('StateExited'):
+                details = event.get('stateExitedEventDetails', {})
+                state_name = details.get('name')
+                if not state_name:
+                    continue
+                entry = step_entries.pop(state_name, {})
+                start = entry.get('start', timestamp)
+                duration = None
+                if start and timestamp:
+                    duration = max(0, (timestamp - start).total_seconds())
+                steps.append({
+                    'id': state_name.lower().replace(' ', '-'),
+                    'name': state_name,
+                    'status': 'completed',
+                    'startTime': _iso(start),
+                    'endTime': _iso(timestamp),
+                    'duration': duration,
+                    'logs': [
+                        f"State input: {entry.get('input', '')}" if entry.get('input') else "",
+                        f"State output: {details.get('output', '')}" if details.get('output') else ""
+                    ]
+                })
+                logs.append(f"[EXIT] {state_name} at {timestamp.isoformat() if timestamp else 'unknown'}")
+
+            elif event_type.startswith('Execution'):
+                logs.append(f"[{event_type}] at {timestamp.isoformat() if timestamp else 'unknown'}")
+
+        if status and status != 'SUCCEEDED':
+            logs.append(f"[ERROR] Execution completed with status {status}")
+
+        # Clean up log noise from empty strings
+        for step in steps:
+            step['logs'] = [line for line in step['logs'] if line]
+
+        execution_time = None
+        if start_time and stop_time:
+            execution_time = max(0, (stop_time - start_time).total_seconds())
+
+        if isinstance(execution_output.get('metrics'), dict):
+            performance_metrics.update(execution_output['metrics'])
+
+        if isinstance(execution_output.get('result'), dict):
+            result_section = execution_output['result']
+            if isinstance(result_section.get('metrics'), dict):
+                performance_metrics.update(result_section['metrics'])
+            if isinstance(result_section.get('evaluation_metrics'), dict):
+                performance_metrics.update(result_section['evaluation_metrics'])
+
+        performance_metrics.update({
+            'execution_time': execution_time or 0,
+            'steps_completed': len(steps),
+            'status': status
+        })
+
+        return {
+            'steps': steps,
+            'logs': logs,
+            'performance_metrics': performance_metrics,
+            'execution_time': execution_time or 0,
+            'samples_processed': performance_metrics.get('samples_processed', 0),
+            'features_used': performance_metrics.get('features_used', 0)
+        }
     
     def _create_state_machine_definition(self, pipeline_config: Dict[str, Any]) -> Dict[str, Any]:
         """Create Step Functions state machine definition."""

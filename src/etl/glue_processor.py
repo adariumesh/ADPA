@@ -7,6 +7,7 @@ that exceed Lambda's limitations (>1GB, >15 minutes processing time).
 
 import json
 import os
+import logging
 import boto3
 from datetime import datetime
 from typing import Dict, Any, List, Optional
@@ -39,33 +40,12 @@ class GlueETLProcessor:
         Args:
             region: AWS region name (defaults to centralized config)
         """
+        self.logger = logging.getLogger(__name__)
         self.region = region or AWS_REGION
-        
-        # Try to load credentials from rootkey.csv
-        try:
-            if get_credentials_from_csv:
-                creds = get_credentials_from_csv()
-                if creds['access_key_id'] and creds['secret_access_key']:
-                    self.glue = boto3.client(
-                        'glue', 
-                        region_name=self.region,
-                        aws_access_key_id=creds['access_key_id'],
-                        aws_secret_access_key=creds['secret_access_key']
-                    )
-                    self.s3 = boto3.client(
-                        's3', 
-                        region_name=self.region,
-                        aws_access_key_id=creds['access_key_id'],
-                        aws_secret_access_key=creds['secret_access_key']
-                    )
-                else:
-                    raise ValueError("No credentials in CSV")
-            else:
-                raise ValueError("Config module not available")
-        except Exception:
-            # Fallback to default credential chain
-            self.glue = boto3.client('glue', region_name=self.region)
-            self.s3 = boto3.client('s3', region_name=self.region)
+
+        session_kwargs = self._resolve_session_kwargs()
+        self.glue = boto3.client('glue', **session_kwargs)
+        self.s3 = boto3.client('s3', **session_kwargs)
         
         # Configuration from centralized config
         self.role_arn = GLUE_EXECUTION_ROLE
@@ -73,6 +53,53 @@ class GlueETLProcessor:
         self.script_prefix = "glue-scripts/"
         self.output_bucket = DATA_BUCKET
         self.output_prefix = "processed-data/"
+
+    def _resolve_session_kwargs(self) -> Dict[str, Any]:
+        """Determine how to authenticate with AWS for Glue/S3 clients."""
+        session_kwargs: Dict[str, Any] = {"region_name": self.region}
+
+        if self._should_use_instance_credentials():
+            self.logger.info("GlueETLProcessor using IAM role credentials (instance profile)")
+            return session_kwargs
+
+        creds = self._load_static_credentials()
+        if creds:
+            self.logger.info("GlueETLProcessor using static credentials from rootkey.csv")
+            session_kwargs.update(
+                aws_access_key_id=creds["access_key_id"],
+                aws_secret_access_key=creds["secret_access_key"],
+            )
+            if creds.get("session_token"):
+                session_kwargs["aws_session_token"] = creds["session_token"]
+        else:
+            self.logger.info("GlueETLProcessor falling back to default credential chain")
+
+        return session_kwargs
+
+    @staticmethod
+    def _should_use_instance_credentials() -> bool:
+        """Prefer Lambda/EC2 role credentials unless explicitly overridden."""
+        force_rootkey = os.getenv("FORCE_GLUE_ROOTKEY", "false").lower() == "true"
+        if force_rootkey:
+            return False
+
+        lambda_env = bool(os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
+        exec_env = bool(os.getenv("AWS_EXECUTION_ENV"))
+        force_instance = os.getenv("FORCE_INSTANCE_CREDENTIALS", "false").lower() == "true"
+        return lambda_env or exec_env or force_instance
+
+    @staticmethod
+    def _load_static_credentials() -> Dict[str, str]:
+        if not get_credentials_from_csv:
+            return {}
+
+        try:
+            creds = get_credentials_from_csv()
+            if creds.get('access_key_id') and creds.get('secret_access_key'):
+                return creds
+        except Exception:
+            return {}
+        return {}
     
     def create_crawler(
         self,
