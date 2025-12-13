@@ -55,6 +55,8 @@ AWS_CONFIG: Dict[str, Any] = {
     "secrets_arn": os.getenv("SECRETS_ARN", ""),
     "region": AWS_REGION,
     "account_id": AWS_ACCOUNT_ID,
+    "pipelines_table": os.getenv("PIPELINES_TABLE", "adpa-pipelines"),
+    "pipelines_table_prod": os.getenv("PIPELINES_TABLE_PROD", "adpa-prod-pipelines"),
 }
 
 LAMBDA_FUNCTION_NAME = os.getenv("AWS_LAMBDA_FUNCTION_NAME", "adpa-lambda-handler")
