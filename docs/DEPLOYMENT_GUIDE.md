@@ -134,6 +134,36 @@ Add to your Claude Code MCP settings:
 - Enable VPC and security groups for AWS resources
 - Implement rate limiting and input validation
 
+### 2. Fixing IAM Permissions for Step Functions + Logging
+If the Lambda orchestration fails with `iam:PassRole` or `logs:TagResource` errors, run the helper script from the repo root:
+
+```bash
+python scripts/update_iam_permissions.py \
+   --role-name adpa-lambda-execution-role \
+   --step-role-arn arn:aws:iam::083308938449:role/adpa-stepfunctions-role
+```
+
+What the script does:
+
+- Attaches an inline policy (`ADPAAllowPassStepFunctionsRole`) granting `iam:PassRole` for the Step Functions execution role.
+- Grants `logs:CreateLogGroup`, `logs:CreateLogStream`, `logs:PutLogEvents`, `logs:PutRetentionPolicy`, and `logs:TagResource` so the orchestrator can bootstrap CloudWatch logging groups.
+
+To perform the change manually, run:
+
+```bash
+aws iam put-role-policy \
+   --role-name adpa-lambda-execution-role \
+   --policy-name ADPAAllowPassStepFunctionsRole \
+   --policy-document '"{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"iam:PassRole","Resource":"arn:aws:iam::083308938449:role/adpa-stepfunctions-role"}]}'
+
+aws iam put-role-policy \
+   --role-name adpa-lambda-execution-role \
+   --policy-name ADPAOrchestratorLogsAccess \
+   --policy-document '"{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["logs:CreateLogGroup","logs:TagResource","logs:PutRetentionPolicy"],"Resource":"arn:aws:logs:us-east-2:083308938449:log-group:*"},{"Effect":"Allow","Action":["logs:CreateLogStream","logs:PutLogEvents"],"Resource":"arn:aws:logs:us-east-2:083308938449:log-group:*:*"}]}'
+```
+
+Both the script and the manual commands are idempotent, so it is safe to rerun them after deployments.
+
 ### 2. Monitoring & Observability
 ```bash
 # Enhanced monitoring is already implemented

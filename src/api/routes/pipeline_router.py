@@ -8,10 +8,12 @@ import json
 import logging
 import os
 import random
+import shutil
 import tempfile
 import time
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
@@ -32,6 +34,7 @@ STEP_FUNCTION_ACTIONS = {
     "ingest_data",
     "clean_data",
     "engineer_features",
+    "prepare_training_package",
     "evaluate_model",
     "persist_pipeline_result",
 }
@@ -185,6 +188,12 @@ class PipelineRouter:
             feature_payload["status"] = "success"
             return feature_payload
 
+        if action == "prepare_training_package":
+            package = self._prepare_training_package(pipeline_id)
+            package["generated_at"] = now_iso
+            package["status"] = "ready"
+            return package
+
         if action == "evaluate_model":
             metrics = self._build_default_metrics(event)
             return {
@@ -271,6 +280,34 @@ class PipelineRouter:
             "train_rows": max(0, len(train_rows) - 1),
             "test_rows": max(0, len(test_rows) - 1),
             "requires_gpu": False,
+        }
+
+    def _prepare_training_package(self, pipeline_id: str) -> Dict[str, Any]:
+        script_path = Path(os.getenv("TRAINING_ENTRYPOINT", "src/training/scripts/random_forest_entrypoint.py"))
+        if not script_path.exists():
+            raise FileNotFoundError(f"Training entrypoint not found at {script_path}")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_root = Path(tmpdir)
+            program_name = "train.py"
+            destination = tmp_root / program_name
+            shutil.copy2(script_path, destination)
+
+            archive_path = shutil.make_archive(
+                base_name=str(tmp_root / "code"),
+                format="gztar",
+                root_dir=tmp_root,
+            )
+
+            bucket = self.aws_config["model_bucket"]
+            key = f"code/{pipeline_id}/code.tar.gz"
+            s3 = boto3.client("s3", region_name=self.region)
+            s3.upload_file(archive_path, bucket, key)
+
+        return {
+            "pipeline_id": pipeline_id,
+            "program_name": program_name,
+            "submit_directory": f"s3://{bucket}/{key}",
         }
 
     @staticmethod

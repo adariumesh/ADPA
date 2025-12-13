@@ -3,14 +3,18 @@ Complete ADPA API Lambda Handler
 Handles all API endpoints for pipeline management
 """
 
-import json
-import boto3
 import base64
+import json
+import os
+import shutil
+import tempfile
 import time
 import uuid
 from datetime import datetime
-from typing import Dict, Any
-import os
+from pathlib import Path
+from typing import Any, Dict
+
+import boto3
 from boto3.dynamodb.conditions import Key
 
 # AWS clients
@@ -49,6 +53,39 @@ def get_table():
     """Get DynamoDB table"""
     table = dynamodb.Table(PIPELINES_TABLE)
     return table
+
+
+def prepare_training_package(pipeline_id: str) -> Dict[str, Any]:
+    """Package the training script for SageMaker script mode."""
+
+    entrypoint = Path(
+        os.environ.get("TRAINING_ENTRYPOINT", "src/training/scripts/random_forest_entrypoint.py")
+    )
+
+    if not entrypoint.exists():
+        raise FileNotFoundError(f"Training entrypoint not found at {entrypoint}")
+
+    program_name = "train.py"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_root = Path(tmpdir)
+        destination = tmp_root / program_name
+        shutil.copy2(entrypoint, destination)
+
+        archive_path = shutil.make_archive(
+            base_name=str(tmp_root / "code"),
+            format="gztar",
+            root_dir=tmp_root,
+        )
+
+        s3_key = f"code/{pipeline_id}/code.tar.gz"
+        s3.upload_file(archive_path, MODEL_BUCKET, s3_key)
+
+    return {
+        "pipeline_id": pipeline_id,
+        "program_name": program_name,
+        "submit_directory": f"s3://{MODEL_BUCKET}/{s3_key}",
+    }
 
 
 def handle_step_function_action(event, context):
@@ -96,6 +133,15 @@ def handle_step_function_action(event, context):
                 'objective': objective
             }
             
+        elif action == 'prepare_training_package':
+            pipeline_id = event.get('pipeline_id') or f"pipeline-{uuid.uuid4().hex[:12]}"
+            package = prepare_training_package(pipeline_id)
+            package.update({
+                'status': 'ready',
+                'generated_at': datetime.utcnow().isoformat()
+            })
+            return package
+
         elif action == 'evaluate_model':
             model_artifacts = event.get('model_artifacts')
             test_data = event.get('test_data')

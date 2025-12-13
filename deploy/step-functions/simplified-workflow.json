@@ -47,6 +47,23 @@
         "objective.$": "$.objective"
       },
       "ResultPath": "$.feature_result",
+      "Next": "PrepareTrainingPackage",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "PersistFailure"
+        }
+      ]
+    },
+    "PrepareTrainingPackage": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-east-2:083308938449:function:adpa-lambda-function",
+      "Parameters": {
+        "action": "prepare_training_package",
+        "pipeline_id.$": "$.pipeline_id"
+      },
+      "ResultPath": "$.training_package",
       "Next": "ModelTraining",
       "Catch": [
         {
@@ -63,16 +80,21 @@
         "TrainingJobName.$": "$.training_job_name",
         "RoleArn": "arn:aws:iam::083308938449:role/adpa-sagemaker-execution-role",
         "AlgorithmSpecification": {
-          "TrainingImage": "825641698319.dkr.ecr.us-east-2.amazonaws.com/xgboost:1.5-1",
+          "TrainingImage": "683313688378.dkr.ecr.us-east-2.amazonaws.com/sagemaker-scikit-learn:1.2-1-cpu-py3",
           "TrainingInputMode": "File",
-          "TrainingImageConfig": {
-            "TrainingRepositoryAccessMode": "Platform"
-          }
+          "EnableSageMakerMetricsTimeSeries": true
         },
         "HyperParameters": {
-          "objective": "binary:logistic",
-          "num_round": "50",
-          "max_depth": "5"
+          "sagemaker_program": "train.py",
+          "sagemaker_submit_directory.$": "$.training_package.submit_directory",
+          "sagemaker_container_log_level": "20",
+          "sagemaker_job_name.$": "$.training_job_name",
+          "sagemaker_region": "us-east-2",
+          "n_estimators": "200",
+          "max_depth": "10",
+          "target_column": "Churn",
+          "test_size": "0.2",
+          "random_state": "42"
         },
         "InputDataConfig": [
           {
